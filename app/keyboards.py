@@ -4,7 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.buttons import KEYS, PAGE_SIZE, STYLES, Theme
 from app.i18n import t
-from app.storage import DEAL_FUNDED, DEAL_OPEN, DEAL_PAID, DEAL_PENDING, DEAL_REVIEW, DEAL_RUB_SENT, DEAL_WAIT_TON, Storage
+from app.storage import DEAL_FUNDED, DEAL_LISTED, DEAL_OPEN, DEAL_PAID, DEAL_PENDING, DEAL_REVIEW, DEAL_RUB_SENT, DEAL_WAIT_TON, Storage
 
 
 class LangCB(CallbackData, prefix="lang"):
@@ -19,6 +19,10 @@ class DealCB(CallbackData, prefix="deal"):
     a: str
     i: int = 0
     x: int = 0
+
+
+class CatCB(CallbackData, prefix="cat"):
+    k: str = "goods"
 
 
 class WalletCB(CallbackData, prefix="wal"):
@@ -52,11 +56,12 @@ def main_menu(lang: str, theme: Theme, deal_id: int | None = None) -> InlineKeyb
     theme.add(kb, "btn_inventory", lang, callback_data=NavCB(a="inv").pack())
     theme.add(kb, "btn_history", lang, callback_data=NavCB(a="hist").pack())
     theme.add(kb, "btn_about", lang, callback_data=NavCB(a="about").pack())
+    theme.add(kb, "btn_feed", lang, callback_data=NavCB(a="feed").pack())
     if deal_id:
         theme.add(kb, "active_deal_btn", lang, callback_data=DealCB(a="open", i=deal_id).pack(), fmt={"id": deal_id})
-        kb.adjust(2, 2, 1, 1)
+        kb.adjust(2, 2, 2, 1)
     else:
-        kb.adjust(2, 2, 1)
+        kb.adjust(2, 2, 2)
     return kb.as_markup()
 
 
@@ -104,11 +109,34 @@ def role_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def kind_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
+def deal_mode_kb(lang: str, theme: Theme, channel_url: str = "") -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    theme.add(kb, "deal_kind_goods", lang, callback_data=DealCB(a="kind", x=0).pack())
-    theme.add(kb, "deal_kind_ton", lang, callback_data=DealCB(a="kind", x=1).pack())
+    theme.add(kb, "deal_private", lang, callback_data=DealCB(a="mode", x=0).pack())
+    theme.add(kb, "deal_public", lang, callback_data=DealCB(a="mode", x=1).pack())
+    if channel_url:
+        kb.button(text=t(lang, "deal_channel"), url=channel_url)
+    theme.add(kb, "btn_feed", lang, callback_data=NavCB(a="feed").pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def category_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
+    from app.catalog import CATS, label
+
+    kb = InlineKeyboardBuilder()
+    for key in CATS:
+        kb.button(text=label(key, lang), callback_data=CatCB(k=key).pack())
+    theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
+    kb.adjust(2)
+    return kb.as_markup()
+
+
+def take_kb(lang: str, theme: Theme, deal_id: int) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    theme.add(kb, "deal_take", lang, callback_data=DealCB(a="take", i=deal_id).pack())
+    theme.add(kb, "deal_manual_btn", lang, callback_data=DealCB(a="memo", i=deal_id).pack())
+    theme.add(kb, "btn_back", lang, callback_data=NavCB(a="feed").pack())
     kb.adjust(1)
     return kb.as_markup()
 
@@ -142,6 +170,19 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int) -> InlineKeyboardMarkup
         ton = False
     if status == DEAL_PENDING and seller:
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
+    if status == DEAL_LISTED and seller:
+        theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())
+        theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
+        cat = ""
+        try:
+            cat = deal["category"] or ""
+        except (KeyError, IndexError, TypeError):
+            cat = ""
+        if cat == "nft":
+            theme.add(kb, "deal_set_nft", lang, callback_data=DealCB(a="nft", i=deal["id"]).pack())
+        theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
+    if status in {DEAL_OPEN, DEAL_PAID, DEAL_LISTED, DEAL_WAIT_TON, DEAL_FUNDED, DEAL_RUB_SENT}:
+        theme.add(kb, "deal_manual_btn", lang, callback_data=DealCB(a="memo", i=deal["id"]).pack())
     if status == DEAL_OPEN:
         if ton:
             if seller:

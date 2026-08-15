@@ -5,11 +5,13 @@ import secrets
 from app.config import Settings
 from app.i18n import t
 from app.services.ton import TonEscrow, enough_ton, payout_ton
+from app.catalog import listing_allowed, needs_nft, normalize, payment_kind
 from app.storage import (
     DEAL_CANCELLED,
     DEAL_CLOSED,
     DEAL_DISPUTE,
     DEAL_FUNDED,
+    DEAL_LISTED,
     DEAL_OPEN,
     DEAL_PAID,
     DEAL_PENDING,
@@ -37,7 +39,15 @@ async def peer_of(deal, user_id: int) -> int:
     return deal["seller_id"] if deal["buyer_id"] == user_id else deal["buyer_id"]
 
 
-async def open_offer(db: Storage, actor_id: int, peer_id: int, as_buyer: bool, kind: str = KIND_GOODS) -> int:
+async def open_offer(
+    db: Storage,
+    actor_id: int,
+    peer_id: int,
+    as_buyer: bool,
+    kind: str = KIND_GOODS,
+    category: str = "goods",
+    title: str = "",
+) -> int:
     if actor_id == peer_id:
         raise DealError("deal_self")
     if await db.active_deal(actor_id):
@@ -45,6 +55,8 @@ async def open_offer(db: Storage, actor_id: int, peer_id: int, as_buyer: bool, k
         raise DealError("deal_busy_you", id=active["id"])
     if await db.active_deal(peer_id):
         raise DealError("deal_busy_them")
+    category = normalize(category)
+    kind = payment_kind(category) if category else kind
     seller_id = peer_id if as_buyer else actor_id
     buyer_id = actor_id if as_buyer else peer_id
     if kind == KIND_TON_RUB:
@@ -53,7 +65,59 @@ async def open_offer(db: Storage, actor_id: int, peer_id: int, as_buyer: bool, k
             raise DealError("deal_ton_no_req")
         if not seller or not seller["ton_address"]:
             raise DealError("deal_ton_no_refund")
-    return await db.create_deal(seller_id, buyer_id, kind)
+    return await db.create_deal(seller_id, buyer_id, kind, category=category, title=title)
+
+
+async def create_listing(
+    db: Storage,
+    seller_id: int,
+    category: str,
+    title: str,
+    amount: float,
+    description: str,
+) -> int:
+    if await db.active_deal(seller_id):
+        active = await db.active_deal(seller_id)
+        raise DealError("deal_busy_you", id=active["id"])
+    category = normalize(category)
+    if not listing_allowed(category):
+        raise DealError("deal_list_ton")
+    kind = payment_kind(category)
+    title = (title or "").strip()[:120]
+    if len(title) < 2:
+        raise DealError("req_bad")
+    if float(amount or 0) <= 0:
+        raise DealError("deal_need_price")
+    return await db.create_deal(
+        seller_id,
+        0,
+        kind,
+        category=category,
+        title=title,
+        status=DEAL_LISTED,
+        amount=amount,
+        description=(description or "")[:1000],
+    )
+
+
+async def take_listing(db: Storage, deal_id: int, buyer_id: int) -> None:
+    deal = await db.get_deal(deal_id)
+    if deal is None or deal["status"] != DEAL_LISTED:
+        raise DealError("deal_listed_taken")
+    if deal["seller_id"] == buyer_id:
+        raise DealError("deal_self")
+    if await db.active_deal(buyer_id):
+        active = await db.active_deal(buyer_id)
+        raise DealError("deal_busy_you", id=active["id"])
+    if needs_nft(deal["category"] if "category" in deal.keys() else "") and not deal["nft_id"]:
+        raise DealError("nft_need_gift")
+    need = float(deal["amount"] or 0)
+    if need <= 0:
+        raise DealError("deal_need_price")
+    buyer = await db.get_user(buyer_id)
+    if buyer is None or float(buyer["balance"] or 0) < need:
+        raise DealError("deal_need_deposit")
+    await db.touch_deal(deal_id, buyer_id=buyer_id, status=DEAL_OPEN)
 
 
 async def accept(db: Storage, deal_id: int, user_id: int) -> None:
@@ -80,14 +144,14 @@ async def set_price(db: Storage, deal_id: int, user_id: int, amount: float) -> N
         raise DealError("error")
     if is_ton_deal(deal):
         raise DealError("error")
-    if deal["status"] != DEAL_OPEN:
+    if deal["status"] not in {DEAL_OPEN, DEAL_LISTED}:
         raise DealError("deal_price_locked")
     await db.touch_deal(deal_id, amount=amount)
 
 
 async def set_description(db: Storage, deal_id: int, user_id: int, text: str) -> None:
     deal = await db.get_deal(deal_id)
-    if deal is None or deal["seller_id"] != user_id or deal["status"] != DEAL_OPEN:
+    if deal is None or deal["seller_id"] != user_id or deal["status"] not in {DEAL_OPEN, DEAL_LISTED}:
         raise DealError("error")
     await db.touch_deal(deal_id, description=text[:1000])
 
@@ -99,7 +163,7 @@ async def attach_nft(db: Storage, deal_id: int, user_id: int, nft_id: int) -> st
         raise DealError("error")
     if is_ton_deal(deal):
         raise DealError("error")
-    if deal["status"] != DEAL_OPEN:
+    if deal["status"] not in {DEAL_OPEN, DEAL_LISTED}:
         raise DealError("error")
     if nft["owner_id"] != user_id or nft["status"] != NFT_AVAILABLE:
         raise DealError("error")
@@ -272,6 +336,11 @@ async def cancel_mutual(db: Storage, deal_id: int, ton: TonEscrow | None = None)
     deal = await db.get_deal(deal_id)
     if deal is None:
         raise DealError("error")
+    if deal["status"] == DEAL_LISTED:
+        if deal["nft_id"] and not deal["nft_sent"]:
+            await db.set_nft_status(deal["nft_id"], NFT_AVAILABLE, deal_id=None)
+        await db.touch_deal(deal_id, status=DEAL_CANCELLED)
+        return
     if is_ton_deal(deal):
         if deal["status"] in {DEAL_FUNDED, DEAL_RUB_SENT, DEAL_DISPUTE}:
             raise DealError("deal_cancel_denied")

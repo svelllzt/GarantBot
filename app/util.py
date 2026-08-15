@@ -1,7 +1,6 @@
 import re
 from html import escape
 
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
 from app.i18n import t
@@ -92,7 +91,9 @@ def money_ton(value) -> str:
 
 def is_ton_deal(deal) -> bool:
     try:
-        return deal["kind"] == KIND_TON_RUB
+        if deal["kind"] == KIND_TON_RUB:
+            return True
+        return deal["category"] == "ton"
     except (KeyError, IndexError, TypeError):
         return False
 
@@ -138,8 +139,12 @@ def profile_text(user, lang: str, currency: str) -> str:
 
 
 async def render_deal(db, deal, lang: str, currency: str, escrow: str = "") -> str:
-    buyer = await db.get_user(deal["buyer_id"])
+    from app.catalog import label as cat_label
+
+    buyer = await db.get_user(deal["buyer_id"]) if deal["buyer_id"] else None
     seller = await db.get_user(deal["seller_id"])
+    cat = cat_label(deal["category"] if "category" in deal.keys() else None, lang)
+    title = deal["title"] if "title" in deal.keys() else ""
     if is_ton_deal(deal):
         req = "—"
         if deal["status"] in {"funded", "rub_sent", "dispute", "closed"}:
@@ -169,8 +174,10 @@ async def render_deal(db, deal, lang: str, currency: str, escrow: str = "") -> s
         lang,
         "deal_opened",
         id=deal["id"],
+        cat=cat,
+        title=h(title) if title else cat,
         buyer=username_of(buyer) if buyer else "-",
-        buyer_id=deal["buyer_id"],
+        buyer_id=deal["buyer_id"] or "—",
         seller=username_of(seller) if seller else "-",
         seller_id=deal["seller_id"],
         amount=amount,
@@ -197,18 +204,10 @@ def history_line(deal, user_id: int, peer_name: str, lang: str, currency: str) -
     )
 
 
-async def paint(event: Message | CallbackQuery, text: str, markup=None) -> None:
-    if isinstance(event, CallbackQuery):
-        try:
-            await event.message.edit_text(text, reply_markup=markup)
-        except TelegramBadRequest:
-            await event.message.answer(text, reply_markup=markup)
-        try:
-            await event.answer()
-        except TelegramBadRequest:
-            pass
-        return
-    await event.answer(text, reply_markup=markup)
+async def paint(event: Message | CallbackQuery, text: str, markup=None, screen: str | None = None, settings=None) -> None:
+    from app.media import paint as send
+
+    await send(event, text, markup, screen=screen, settings=settings)
 
 
 def extract_emoji_id(message: Message) -> str | None:

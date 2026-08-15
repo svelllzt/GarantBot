@@ -22,6 +22,8 @@ FIELDS: dict[tuple[str, str], str] = {
     ("bot", "currency"): "currency",
     ("bot", "min_deposit"): "min_deposit",
     ("bot", "min_withdraw"): "min_withdraw",
+    ("bot", "deals_channel"): "deals_channel",
+    ("bot", "assets"): "assets_dir",
     ("bank", "api_id"): "bank_api_id",
     ("bank", "api_hash"): "bank_api_hash",
     ("bank", "session"): "bank_session",
@@ -48,6 +50,8 @@ DEFAULTS: dict[str, Any] = {
     "currency": "USDT",
     "min_deposit": 5.0,
     "min_withdraw": 10.0,
+    "deals_channel": "",
+    "assets_dir": "assets",
     "bank_api_id": 0,
     "bank_api_hash": "",
     "bank_session": "",
@@ -268,6 +272,8 @@ class Settings:
     currency: str
     min_deposit: float
     min_withdraw: float
+    deals_channel: str
+    assets_dir: str
     bank_api_id: int
     bank_api_hash: str
     bank_session: str
@@ -282,9 +288,11 @@ class Settings:
     min_rub_deal: float
     db_path: str
     path: Path
+    bot_username: str
 
     def __init__(self, values: dict[str, Any], path: Path) -> None:
         self.path = path
+        self.bot_username = ""
         for key, default in DEFAULTS.items():
             setattr(self, key, values.get(key, default))
 

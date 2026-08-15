@@ -29,8 +29,30 @@ async def main() -> None:
         assert row["card"] == "4111111111111111"
         assert row["ton_address"].startswith("UQD")
         cols = await db._columns("users")
-        for name in ("user_id", "nick", "username", "deals_count", "card", "phone", "bank_name", "ton_address"):
+        for name in ("user_id", "nick", "username", "deals_count", "card", "phone", "bank_name", "ton_address", "lang"):
             assert name in cols, name
+        await db.set_lang(1, "en")
+        again = await db.upsert_user(1, "seller", "Иван")
+        assert again["lang"] == "en"
+        lid = await db.create_deal(
+            1,
+            0,
+            category="acc_rbx",
+            title="Roblox",
+            status="listed",
+            amount=12.5,
+            description="mail unbound",
+        )
+        listed = await db.get_deal(lid)
+        assert listed["status"] == "listed"
+        assert listed["category"] == "acc_rbx"
+        assert listed["title"] == "Roblox"
+        assert listed["buyer_id"] == 0
+        feed = await db.listed_deals()
+        assert feed and feed[0]["id"] == lid
+        deal_cols = await db._columns("deals")
+        for name in ("category", "title", "channel_msg_id", "kind"):
+            assert name in deal_cols, name
         await db.close()
         print("ok")
     finally:

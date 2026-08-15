@@ -28,6 +28,8 @@ async def main() -> None:
     await db.connect()
 
     bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    me = await bot.get_me()
+    settings.bot_username = me.username or ""
     dp = Dispatcher(storage=MemoryStorage())
     bank = BankAccount(settings, db, bot)
     ton = TonEscrow(settings)

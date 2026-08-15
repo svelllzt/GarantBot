@@ -11,6 +11,10 @@ token =
 admin_ids =
 support_username = support
 support_chat =
+; Канал объявлений: @name или -100id. Бот должен быть админом с правом писать.
+deals_channel =
+; Картинки экранов: assets/menu.jpg, profile.jpg, deal.jpg… См. assets/README.txt
+assets = assets
 commission_percent = 2
 currency = USDT
 min_deposit = 5

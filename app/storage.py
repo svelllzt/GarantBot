@@ -6,6 +6,7 @@ from typing import Any, Iterable, Optional
 import aiosqlite
 
 DEAL_PENDING = "pending"
+DEAL_LISTED = "listed"
 DEAL_OPEN = "open"
 DEAL_WAIT_TON = "wait_ton"
 DEAL_FUNDED = "funded"
@@ -25,6 +26,7 @@ NFT_TRANSFERRED = "transferred"
 
 ACTIVE_DEALS = (
     DEAL_PENDING,
+    DEAL_LISTED,
     DEAL_OPEN,
     DEAL_WAIT_TON,
     DEAL_FUNDED,
@@ -46,6 +48,10 @@ DEAL_FIELDS = {
     "ton_received",
     "rub_marked",
     "payout_hash",
+    "category",
+    "title",
+    "channel_msg_id",
+    "buyer_id",
 }
 WALLET_PENDING = "pending"
 WALLET_DONE = "done"
@@ -104,6 +110,9 @@ class Storage:
                 description TEXT,
                 nft_sent INTEGER NOT NULL DEFAULT 0,
                 kind TEXT NOT NULL DEFAULT 'goods',
+                category TEXT NOT NULL DEFAULT 'goods',
+                title TEXT,
+                channel_msg_id INTEGER,
                 ton_amount REAL,
                 rub_amount REAL,
                 buyer_ton TEXT,
@@ -215,6 +224,9 @@ class Storage:
                 "ton_received": "REAL",
                 "rub_marked": "INTEGER NOT NULL DEFAULT 0",
                 "payout_hash": "TEXT",
+                "category": "TEXT NOT NULL DEFAULT 'goods'",
+                "title": "TEXT",
+                "channel_msg_id": "INTEGER",
             },
         )
         await self.db.execute(
@@ -268,7 +280,8 @@ class Storage:
         return await self.fetchone("SELECT * FROM users WHERE username = ?", (clean,))
 
     async def set_lang(self, user_id: int, lang: str) -> None:
-        await self.execute("UPDATE users SET lang = ? WHERE user_id = ?", (lang, user_id))
+        code = lang if lang in {"ru", "en"} else "ru"
+        await self.execute("UPDATE users SET lang = ? WHERE user_id = ?", (code, user_id))
 
     async def set_banned(self, user_id: int, banned: bool) -> None:
         await self.execute("UPDATE users SET banned = ? WHERE user_id = ?", (int(banned), user_id))
@@ -322,20 +335,50 @@ class Storage:
         )
         return users["c"], deals["c"], float(money["s"])
 
-    async def create_deal(self, seller_id: int, buyer_id: int, kind: str = KIND_GOODS) -> int:
+    async def create_deal(
+        self,
+        seller_id: int,
+        buyer_id: int,
+        kind: str = KIND_GOODS,
+        *,
+        category: str = "goods",
+        title: str = "",
+        status: str | None = None,
+        amount: float | None = None,
+        description: str | None = None,
+    ) -> int:
         if kind not in {KIND_GOODS, KIND_TON_RUB}:
             kind = KIND_GOODS
         cur = await self.execute(
             """
-            INSERT INTO deals (seller_id, buyer_id, status, kind, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO deals (
+                seller_id, buyer_id, status, kind, category, title, amount, description, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (seller_id, buyer_id, DEAL_PENDING, kind, now(), now()),
+            (
+                seller_id,
+                buyer_id,
+                status or DEAL_PENDING,
+                kind,
+                category or "goods",
+                (title or "")[:120] or None,
+                amount,
+                description,
+                now(),
+                now(),
+            ),
         )
         return cur.lastrowid
 
     async def get_deal(self, deal_id: int) -> Optional[aiosqlite.Row]:
         return await self.fetchone("SELECT * FROM deals WHERE id = ?", (deal_id,))
+
+    async def listed_deals(self, limit: int = 12) -> list[aiosqlite.Row]:
+        return await self.fetchall(
+            "SELECT * FROM deals WHERE status = ? ORDER BY id DESC LIMIT ?",
+            (DEAL_LISTED, limit),
+        )
 
     async def active_deal(self, user_id: int) -> Optional[aiosqlite.Row]:
         placeholders = ",".join("?" * len(ACTIVE_DEALS))

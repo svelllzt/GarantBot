@@ -11,21 +11,19 @@ from app.keyboards import NavCB, WalletCB, cancel_kb, deposit_kb, lang_kb, requi
 from app.services.ton import incoming_by_comment, ton_to_currency
 from app.states import Requisites, Wallet
 from app.storage import WALLET_DONE, WALLET_PENDING, Storage
-from app.util import is_cancel, parse_amount, valid_card, valid_phone, valid_ton
+from app.util import is_cancel, paint, parse_amount, valid_card, valid_phone, valid_ton
 
 router = Router()
 
 
 @router.callback_query(NavCB.filter(F.a == "req"))
-async def requisites(call: CallbackQuery, lang: str, theme: Theme):
-    await call.message.edit_text(t(lang, "req_menu"), reply_markup=requisites_kb(lang, theme))
-    await call.answer()
+async def requisites(call: CallbackQuery, lang: str, theme: Theme, settings: Settings):
+    await paint(call, t(lang, "req_menu"), requisites_kb(lang, theme), screen="requisites", settings=settings)
 
 
 @router.callback_query(NavCB.filter(F.a == "lang"))
-async def change_lang(call: CallbackQuery, theme: Theme):
-    await call.message.edit_text(t("ru", "choose_lang"), reply_markup=lang_kb(theme))
-    await call.answer()
+async def change_lang(call: CallbackQuery, theme: Theme, settings: Settings):
+    await paint(call, t("ru", "choose_lang"), lang_kb(theme), screen="profile", settings=settings)
 
 
 @router.callback_query(NavCB.filter(F.a == "req_card"))
@@ -167,11 +165,13 @@ async def check_deposit(call: CallbackQuery, callback_data: WalletCB, db: Storag
     await db.change_balance(call.from_user.id, float(deposit["amount"]))
     from app.keyboards import home_kb
 
-    await call.message.edit_text(
+    await paint(
+        call,
         t(lang, "deposit_ok", amount=f"{deposit['amount']:.2f}", currency=settings.currency),
-        reply_markup=await home_kb(db, call.from_user.id, lang, theme),
+        await home_kb(db, call.from_user.id, lang, theme),
+        screen="menu",
+        settings=settings,
     )
-    await call.answer()
 
 
 @router.callback_query(NavCB.filter(F.a == "wd"))
@@ -237,11 +237,13 @@ async def withdraw_method(
     await state.clear()
     from app.keyboards import home_kb
 
-    await call.message.edit_text(
+    await paint(
+        call,
         t(lang, "withdraw_ok", id=wid, amount=f"{amount:.2f}", currency=settings.currency, details=details),
-        reply_markup=await home_kb(db, call.from_user.id, lang, theme),
+        await home_kb(db, call.from_user.id, lang, theme),
+        screen="menu",
+        settings=settings,
     )
-    await call.answer()
     for admin_id in settings.admins:
         try:
             await call.bot.send_message(

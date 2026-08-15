@@ -69,12 +69,12 @@ RU = {
     "withdraw_low": "Недостаточно средств.",
     "min_amount": "Минимум {min} {currency}.",
     "about": (
-        "Гарант для безопасных сделок.\n\n"
-        "Обычная сделка: покупатель замораживает сумму на балансе бота, "
-        "продавец передаёт товар или NFT. Деньги уходят после подтверждения.\n\n"
-        "TON → рубли: продавец кладёт TON на кошелёк V4 гаранта. Покупатель "
-        "переводит рубли по реквизитам продавца. После подтверждения рублей "
-        "бот сам отправляет TON на адрес покупателя.\n\n"
+        "Гарант для безопасных сделок: аккаунты, NFT-подарки, товар, TON.\n\n"
+        "Объявления можно выложить в канал. Покупатель пополняет баланс, "
+        "открывает сделку и получает памятку по категории (например, как "
+        "перепривязать Roblox, чтобы аккаунт не вернули).\n\n"
+        "Обычная сделка: оплата с баланса бота, деньги у гаранта до подтверждения.\n"
+        "TON → рубли: TON на кошелёк V4, рубли продавцу, потом автовыплата TON.\n\n"
         "Комиссия: {commission}% с суммы сделки, удерживается с продавца.\n"
         "Поддержка: @{support}\n"
         "{chat}"
@@ -117,6 +117,8 @@ RU = {
     "deal_declined_peer": "Вторая сторона отклонила предложение.",
     "deal_opened": (
         "Сделка #{id}\n"
+        "Категория: {cat}\n"
+        "{title}\n"
         "Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
         "Продавец: @{seller} (<code>{seller_id}</code>)\n"
         "Сумма: {amount}\n"
@@ -149,6 +151,7 @@ RU = {
     "deal_status_review": "завершена, отзыв",
     "deal_status_closed": "закрыта",
     "deal_status_cancelled": "отменена",
+    "deal_status_listed": "в канале, ждёт покупателя",
     "deal_set_price": "Указать сумму",
     "deal_set_nft": "Прикрепить NFT",
     "deal_set_desc": "Условия",
@@ -305,6 +308,36 @@ RU = {
         "Сумма: {amount} TON\n"
         "{extra}"
     ),
+    "btn_feed": "Витрина",
+    "deal_mode": "Как открыть сделку?",
+    "deal_private": "С человеком (username)",
+    "deal_public": "Выложить в канал",
+    "deal_channel": "Канал сделок",
+    "deal_take": "Открыть сделку",
+    "deal_manual_btn": "Памятка",
+    "deal_ask_cat": "Категория сделки?",
+    "deal_ask_title": "Короткое название объявления, как в канале. Например: Roblox 1200 Robux, почта отвязана.",
+    "deal_list_ok": "Объявление #{id} в канале. Когда покупатель откроет сделку, обоим придёт памятка.",
+    "deal_list_no_channel": "Канал не задан в config.ini [bot] deals_channel. Объявление всё равно в витрине бота.",
+    "deal_list_ton": "TON → рубли только напрямую с человеком, не в канал.",
+    "deal_listed_taken": "Объявление уже сняли или закрыли.",
+    "deal_feed_empty": "Открытых объявлений нет.",
+    "deal_feed_line": "#{id} · {cat} · {amount}\n{title}\n@{seller}",
+    "deal_need_deposit": "Сначала пополните баланс в профиле, затем откройте сделку.",
+    "deal_need_price": "У объявления должна быть сумма больше нуля.",
+    "nft_need_gift": "Продавец ещё не прикрепил NFT к объявлению.",
+    "channel_listing": (
+        "<b>Сделка #{id}</b> · {cat}\n"
+        "{title}\n\n"
+        "Продавец: @{seller}\n"
+        "Цена: <b>{amount}</b>\n\n"
+        "{desc}\n\n"
+        "Оплата через бота-гаранта. Нажмите «Открыть в боте»."
+    ),
+    "channel_open": "Открыть в боте",
+    "channel_taken": "🔒 Сделку открыли, объявление снято.",
+    "channel_closed": "🔒 Объявление снято.",
+    "deal_taken_seller": "Покупатель @{username} открыл объявление #{id}. Смотрите памятку и ждите оплату.",
 }
 
 EN = {
@@ -424,6 +457,8 @@ EN = {
     "deal_declined_peer": "The other party declined the offer.",
     "deal_opened": (
         "Deal #{id}\n"
+        "Category: {cat}\n"
+        "{title}\n"
         "Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
         "Seller: @{seller} (<code>{seller_id}</code>)\n"
         "Amount: {amount}\n"
@@ -456,6 +491,7 @@ EN = {
     "deal_status_review": "completed, review",
     "deal_status_closed": "closed",
     "deal_status_cancelled": "cancelled",
+    "deal_status_listed": "listed, waiting for a buyer",
     "deal_set_price": "Set amount",
     "deal_set_nft": "Attach NFT",
     "deal_set_desc": "Terms",
@@ -612,6 +648,36 @@ EN = {
         "Amount: {amount} TON\n"
         "{extra}"
     ),
+    "btn_feed": "Listings",
+    "deal_mode": "How do you want to open a deal?",
+    "deal_private": "With a user (username)",
+    "deal_public": "Post to the channel",
+    "deal_channel": "Deals channel",
+    "deal_take": "Open this deal",
+    "deal_manual_btn": "Memo",
+    "deal_ask_cat": "Deal category?",
+    "deal_ask_title": "Short listing title for the channel. Example: Roblox 1200 Robux, email unlinked.",
+    "deal_list_ok": "Listing #{id} is in the channel. When a buyer opens it, both of you get the memo.",
+    "deal_list_no_channel": "No deals channel in config.ini [bot] deals_channel. The listing is still in the bot feed.",
+    "deal_list_ton": "TON → RUB deals are direct only, not posted to the channel.",
+    "deal_listed_taken": "This listing is already taken or closed.",
+    "deal_feed_empty": "No open listings.",
+    "deal_feed_line": "#{id} · {cat} · {amount}\n{title}\n@{seller}",
+    "deal_need_deposit": "Top up your balance in the profile first, then open the deal.",
+    "deal_need_price": "The listing must have a price greater than zero.",
+    "nft_need_gift": "The seller has not attached an NFT to this listing yet.",
+    "channel_listing": (
+        "<b>Deal #{id}</b> · {cat}\n"
+        "{title}\n\n"
+        "Seller: @{seller}\n"
+        "Price: <b>{amount}</b>\n\n"
+        "{desc}\n\n"
+        "Pay through the escrow bot. Tap Open in bot."
+    ),
+    "channel_open": "Open in bot",
+    "channel_taken": "🔒 This deal was taken.",
+    "channel_closed": "🔒 Listing removed.",
+    "deal_taken_seller": "Buyer @{username} opened listing #{id}. Read the memo and wait for payment.",
 }
 
 LOCALES = {"ru": RU, "en": EN}
