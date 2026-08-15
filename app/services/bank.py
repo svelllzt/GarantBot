@@ -60,7 +60,7 @@ class BankAccount:
 
     async def start(self) -> None:
         if not self.enabled():
-            log.warning("bank account skipped: empty BANK_SESSION")
+            log.warning("bank account skipped: empty [bank] session")
             return
         self.client = Client(
             name="bank",
@@ -72,6 +72,20 @@ class BankAccount:
         self.client.add_handler(RawUpdateHandler(self._on_raw))
         await self.client.start()
         self.me = await self.client.get_me()
+        try:
+            fresh = await self.client.export_session_string()
+        except Exception:
+            fresh = ""
+        if fresh:
+            try:
+                self.settings.patch("bank_session", fresh)
+            except Exception:
+                log.exception("failed to write [bank] session")
+        if self.me.username:
+            try:
+                self.settings.patch("bank_username", self.me.username)
+            except Exception:
+                log.exception("failed to write [bank] username")
         log.info("bank account @%s id=%s", self.me.username, self.me.id)
 
     async def stop(self) -> None:

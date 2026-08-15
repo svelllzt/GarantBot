@@ -1,0 +1,31 @@
+; Скопируйте в config.ini и заполните.
+; python scripts/login_bank.py сам допишет [bank] session и username.
+
+[bot]
+token =
+admin_ids =
+support_username = support
+support_chat =
+commission_percent = 2
+currency = USDT
+min_deposit = 5
+min_withdraw = 10
+
+[bank]
+api_id =
+api_hash =
+session =
+username =
+
+[ton]
+address =
+api_key =
+rate = 0
+mnemonic =
+network = mainnet
+gas = 0.05
+min_deal = 0.1
+min_rub = 1
+
+[db]
+path = data/garant.db

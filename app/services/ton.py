@@ -79,7 +79,7 @@ class TonEscrow:
             return
         words = mnemonic.split()
         if len(words) not in (12, 24):
-            log.warning("TON_MNEMONIC must be 12 or 24 words")
+            log.warning("ton mnemonic must be 12 or 24 words")
             return
         is_testnet = self.settings.ton_network.lower() == "testnet"
         wallet = None
@@ -135,10 +135,15 @@ class TonEscrow:
             except Exception:
                 derived = str(wallet.address)
         if self.address and derived and self.address != derived:
-            log.warning("TON_ADDRESS differs from WalletV4R2: env=%s derived=%s", self.address, derived)
+            log.warning("TON address differs from WalletV4R2: ini=%s derived=%s", self.address, derived)
         if derived:
             self.address = derived
-            self.settings.ton_address = derived
+            if self.settings.ton_address != derived:
+                try:
+                    self.settings.patch("ton_address", derived)
+                except Exception:
+                    self.settings.ton_address = derived
+                    log.exception("failed to write [ton] address")
         log.info("ton escrow %s send=%s", self.address, self.can_send)
 
     async def incoming(self, comment: str) -> Optional[float]:

@@ -20,6 +20,8 @@ log = logging.getLogger("garant")
 
 async def main() -> None:
     settings = get_settings()
+    if not settings.bot_token:
+        raise SystemExit(f"Укажите token в {settings.path} секция [bot]")
     Path(settings.db_path).parent.mkdir(parents=True, exist_ok=True)
 
     db = Storage(settings.db_path)

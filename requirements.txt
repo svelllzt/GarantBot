@@ -1,7 +1,5 @@
 aiogram>=3.15,<4
 pyrofork>=2.3.45
 aiosqlite>=0.20
-pydantic-settings>=2.4
-python-dotenv>=1.0
 aiohttp>=3.10
 tonutils>=0.3.6
