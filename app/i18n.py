@@ -11,6 +11,9 @@ RU = {
     "btn_inventory": "Инвентарь",
     "btn_history": "История",
     "btn_about": "О сервисе",
+    "btn_menu": "Меню",
+    "lang_ru": "Русский",
+    "lang_en": "English",
     "btn_cancel": "Отмена",
     "btn_back": "Назад",
     "btn_yes": "Да",
@@ -179,6 +182,28 @@ RU = {
     "admin_unban": "Разбан",
     "admin_balance": "Баланс",
     "admin_mail": "Рассылка",
+    "admin_buttons": "Кнопки",
+    "admin_btn_pick": "Выберите кнопку.",
+    "admin_btn_card": (
+        "<b>{title}</b>\n<code>{key}</code>\n\n"
+        "RU: {ru}\nEN: {en}\n"
+        "Цвет: {style}\nЭмодзи: {emoji}\n\n"
+        "Цвет и премиум-эмодзи видны, если у владельца бота есть Telegram Premium "
+        "или у бота куплен username на Fragment."
+    ),
+    "admin_btn_name": "Название",
+    "admin_btn_color": "Цвет",
+    "admin_btn_emoji": "Эмодзи",
+    "admin_btn_reset": "Сбросить",
+    "admin_btn_ask_ru": "Русское название кнопки.",
+    "admin_btn_ask_en": "English label. «-» копирует русское.",
+    "admin_btn_ask_emoji": "Пришлите премиум-эмодзи или numeric id. «-» снимает иконку.",
+    "admin_btn_style_primary": "Синий",
+    "admin_btn_style_success": "Зелёный",
+    "admin_btn_style_danger": "Красный",
+    "admin_btn_style_none": "Без цвета",
+    "admin_btn_saved": "Кнопка обновлена.",
+    "admin_btn_no_emoji": "не задан",
     "admin_disputes": "Споры",
     "admin_deposits": "Пополнения",
     "admin_withdraws": "Выводы",
@@ -218,6 +243,9 @@ EN = {
     "btn_inventory": "Inventory",
     "btn_history": "History",
     "btn_about": "About",
+    "btn_menu": "Menu",
+    "lang_ru": "Русский",
+    "lang_en": "English",
     "btn_cancel": "Cancel",
     "btn_back": "Back",
     "btn_yes": "Yes",
@@ -386,6 +414,28 @@ EN = {
     "admin_unban": "Unban",
     "admin_balance": "Balance",
     "admin_mail": "Broadcast",
+    "admin_buttons": "Buttons",
+    "admin_btn_pick": "Pick a button.",
+    "admin_btn_card": (
+        "<b>{title}</b>\n<code>{key}</code>\n\n"
+        "RU: {ru}\nEN: {en}\n"
+        "Color: {style}\nEmoji: {emoji}\n\n"
+        "Color and premium emoji show up if the bot owner has Telegram Premium "
+        "or the bot bought a username on Fragment."
+    ),
+    "admin_btn_name": "Label",
+    "admin_btn_color": "Color",
+    "admin_btn_emoji": "Emoji",
+    "admin_btn_reset": "Reset",
+    "admin_btn_ask_ru": "Russian button label.",
+    "admin_btn_ask_en": "English label. Send - to copy the Russian one.",
+    "admin_btn_ask_emoji": "Send a premium emoji or its numeric id. - removes the icon.",
+    "admin_btn_style_primary": "Blue",
+    "admin_btn_style_success": "Green",
+    "admin_btn_style_danger": "Red",
+    "admin_btn_style_none": "No color",
+    "admin_btn_saved": "Button updated.",
+    "admin_btn_no_emoji": "not set",
     "admin_disputes": "Disputes",
     "admin_deposits": "Deposits",
     "admin_withdraws": "Withdrawals",

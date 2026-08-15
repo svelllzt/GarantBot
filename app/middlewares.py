@@ -3,6 +3,7 @@ from typing import Any, Awaitable, Callable
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
+from app.buttons import Theme
 from app.config import Settings
 from app.i18n import t
 from app.storage import Storage
@@ -32,6 +33,7 @@ class ContextMiddleware(BaseMiddleware):
         data["bank"] = self.bank
         data["db_user"] = row
         data["lang"] = row["lang"] or "ru"
+        data["theme"] = Theme(await self.db.button_map())
 
         if row["banned"] and not self.settings.is_admin(user.id):
             text = t(data["lang"], "banned")

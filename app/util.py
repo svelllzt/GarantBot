@@ -1,6 +1,9 @@
 import re
 from html import escape
 
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import CallbackQuery, Message
+
 from app.i18n import t
 from app.storage import DEAL_CLOSED, DEAL_PENDING
 
@@ -121,3 +124,27 @@ def history_line(deal, user_id: int, peer_name: str, lang: str, currency: str) -
         status=t(lang, deal_status_key(deal["status"] if deal["status"] != DEAL_PENDING else DEAL_CLOSED)),
         peer=peer_name,
     )
+
+
+async def paint(event: Message | CallbackQuery, text: str, markup=None) -> None:
+    if isinstance(event, CallbackQuery):
+        try:
+            await event.message.edit_text(text, reply_markup=markup)
+        except TelegramBadRequest:
+            await event.message.answer(text, reply_markup=markup)
+        try:
+            await event.answer()
+        except TelegramBadRequest:
+            pass
+        return
+    await event.answer(text, reply_markup=markup)
+
+
+def extract_emoji_id(message: Message) -> str | None:
+    for ent in message.entities or []:
+        if getattr(ent, "custom_emoji_id", None):
+            return ent.custom_emoji_id
+    raw = (message.text or "").strip()
+    if raw.isdigit() and len(raw) >= 15:
+        return raw
+    return None

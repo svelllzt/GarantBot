@@ -26,3 +26,6 @@ class AdminFlow(StatesGroup):
     balance_id = State()
     balance_amount = State()
     mail = State()
+    btn_name_ru = State()
+    btn_name_en = State()
+    btn_emoji = State()

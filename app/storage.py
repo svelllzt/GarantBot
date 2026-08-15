@@ -31,6 +31,7 @@ class Storage:
     def __init__(self, path: str) -> None:
         self.path = path
         self.db: Optional[aiosqlite.Connection] = None
+        self._buttons: Optional[dict[str, dict]] = None
 
     async def connect(self) -> None:
         self.db = await aiosqlite.connect(self.path)
@@ -122,6 +123,14 @@ class Storage:
                 details TEXT NOT NULL,
                 status TEXT NOT NULL,
                 created_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS buttons (
+                key TEXT PRIMARY KEY,
+                label_ru TEXT,
+                label_en TEXT,
+                style TEXT,
+                emoji_id TEXT
             );
             """
         )
@@ -433,3 +442,36 @@ class Storage:
 
     async def finish_withdraw(self, withdraw_id: int, status: str) -> None:
         await self.execute("UPDATE withdrawals SET status = ? WHERE id = ?", (status, withdraw_id))
+
+    async def button_map(self) -> dict[str, dict]:
+        if self._buttons is None:
+            rows = await self.fetchall("SELECT * FROM buttons")
+            self._buttons = {r["key"]: dict(r) for r in rows}
+        return self._buttons
+
+    async def patch_button(self, key: str, **fields) -> None:
+        row = dict((await self.button_map()).get(key) or {})
+        row.update(fields)
+        await self.execute(
+            """
+            INSERT INTO buttons (key, label_ru, label_en, style, emoji_id)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                label_ru = excluded.label_ru,
+                label_en = excluded.label_en,
+                style = excluded.style,
+                emoji_id = excluded.emoji_id
+            """,
+            (
+                key,
+                row.get("label_ru"),
+                row.get("label_en"),
+                row.get("style"),
+                row.get("emoji_id"),
+            ),
+        )
+        self._buttons = None
+
+    async def reset_button(self, key: str) -> None:
+        await self.execute("DELETE FROM buttons WHERE key = ?", (key,))
+        self._buttons = None
