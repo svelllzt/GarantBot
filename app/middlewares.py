@@ -10,10 +10,11 @@ from app.storage import Storage
 
 
 class ContextMiddleware(BaseMiddleware):
-    def __init__(self, db: Storage, settings: Settings, bank) -> None:
+    def __init__(self, db: Storage, settings: Settings, bank, ton) -> None:
         self.db = db
         self.settings = settings
         self.bank = bank
+        self.ton = ton
 
     async def __call__(
         self,
@@ -31,6 +32,7 @@ class ContextMiddleware(BaseMiddleware):
         data["db"] = self.db
         data["settings"] = self.settings
         data["bank"] = self.bank
+        data["ton"] = self.ton
         data["db_user"] = row
         data["lang"] = row["lang"] or "ru"
         data["theme"] = Theme(await self.db.button_map())

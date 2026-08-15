@@ -18,6 +18,9 @@ class DealFlow(StatesGroup):
     price = State()
     description = State()
     review = State()
+    ton_amount = State()
+    rub_amount = State()
+    buyer_ton = State()
 
 
 class AdminFlow(StatesGroup):

@@ -7,17 +7,46 @@ import aiosqlite
 
 DEAL_PENDING = "pending"
 DEAL_OPEN = "open"
+DEAL_WAIT_TON = "wait_ton"
+DEAL_FUNDED = "funded"
+DEAL_RUB_SENT = "rub_sent"
 DEAL_PAID = "paid"
 DEAL_DISPUTE = "dispute"
 DEAL_REVIEW = "review"
 DEAL_CLOSED = "closed"
 DEAL_CANCELLED = "cancelled"
 
+KIND_GOODS = "goods"
+KIND_TON_RUB = "ton_rub"
+
 NFT_AVAILABLE = "available"
 NFT_LOCKED = "locked"
 NFT_TRANSFERRED = "transferred"
 
-ACTIVE_DEALS = (DEAL_PENDING, DEAL_OPEN, DEAL_PAID, DEAL_DISPUTE)
+ACTIVE_DEALS = (
+    DEAL_PENDING,
+    DEAL_OPEN,
+    DEAL_WAIT_TON,
+    DEAL_FUNDED,
+    DEAL_RUB_SENT,
+    DEAL_PAID,
+    DEAL_DISPUTE,
+)
+DEAL_FIELDS = {
+    "status",
+    "amount",
+    "nft_id",
+    "description",
+    "nft_sent",
+    "kind",
+    "ton_amount",
+    "rub_amount",
+    "buyer_ton",
+    "ton_comment",
+    "ton_received",
+    "rub_marked",
+    "payout_hash",
+}
 WALLET_PENDING = "pending"
 WALLET_DONE = "done"
 WALLET_REJECTED = "rejected"
@@ -51,6 +80,7 @@ class Storage:
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
+                nick TEXT,
                 first_name TEXT,
                 lang TEXT,
                 balance REAL NOT NULL DEFAULT 0,
@@ -73,6 +103,14 @@ class Storage:
                 nft_id INTEGER,
                 description TEXT,
                 nft_sent INTEGER NOT NULL DEFAULT 0,
+                kind TEXT NOT NULL DEFAULT 'goods',
+                ton_amount REAL,
+                rub_amount REAL,
+                buyer_ton TEXT,
+                ton_comment TEXT,
+                ton_received REAL,
+                rub_marked INTEGER NOT NULL DEFAULT 0,
+                payout_hash TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -134,7 +172,61 @@ class Storage:
             );
             """
         )
+        await self._migrate()
         await self.db.commit()
+
+    async def _columns(self, table: str) -> set[str]:
+        cur = await self.db.execute(f"PRAGMA table_info({table})")
+        rows = await cur.fetchall()
+        return {row[1] for row in rows}
+
+    async def _add_missing(self, table: str, columns: dict[str, str]) -> None:
+        have = await self._columns(table)
+        for name, ddl in columns.items():
+            if name not in have:
+                await self.db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+    async def _migrate(self) -> None:
+        await self._add_missing(
+            "users",
+            {
+                "nick": "TEXT",
+                "first_name": "TEXT",
+                "username": "TEXT",
+                "lang": "TEXT",
+                "balance": "REAL NOT NULL DEFAULT 0",
+                "deals_count": "INTEGER NOT NULL DEFAULT 0",
+                "card": "TEXT",
+                "phone": "TEXT",
+                "bank_name": "TEXT",
+                "ton_address": "TEXT",
+                "banned": "INTEGER NOT NULL DEFAULT 0",
+                "created_at": "INTEGER NOT NULL DEFAULT 0",
+            },
+        )
+        await self._add_missing(
+            "deals",
+            {
+                "kind": "TEXT NOT NULL DEFAULT 'goods'",
+                "ton_amount": "REAL",
+                "rub_amount": "REAL",
+                "buyer_ton": "TEXT",
+                "ton_comment": "TEXT",
+                "ton_received": "REAL",
+                "rub_marked": "INTEGER NOT NULL DEFAULT 0",
+                "payout_hash": "TEXT",
+            },
+        )
+        await self.db.execute(
+            """
+            UPDATE users
+            SET nick = COALESCE(NULLIF(nick, ''), first_name, username, CAST(user_id AS TEXT))
+            WHERE nick IS NULL OR nick = ''
+            """
+        )
+        await self.db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_deals_ton_comment ON deals(ton_comment)"
+        )
 
     async def execute(self, sql: str, params: Iterable[Any] = ()) -> aiosqlite.Cursor:
         cur = await self.db.execute(sql, tuple(params))
@@ -152,15 +244,19 @@ class Storage:
     async def upsert_user(self, user_id: int, username: Optional[str], first_name: str) -> aiosqlite.Row:
         row = await self.fetchone("SELECT * FROM users WHERE user_id = ?", (user_id,))
         uname = (username or "").lstrip("@").lower() or None
+        nick = (first_name or "").strip() or uname or str(user_id)
         if row is None:
             await self.execute(
-                "INSERT INTO users (user_id, username, first_name, created_at) VALUES (?, ?, ?, ?)",
-                (user_id, uname, first_name, now()),
+                """
+                INSERT INTO users (user_id, username, nick, first_name, deals_count, created_at)
+                VALUES (?, ?, ?, ?, 0, ?)
+                """,
+                (user_id, uname, nick, first_name, now()),
             )
         else:
             await self.execute(
-                "UPDATE users SET username = ?, first_name = ? WHERE user_id = ?",
-                (uname, first_name, user_id),
+                "UPDATE users SET username = ?, nick = ?, first_name = ? WHERE user_id = ?",
+                (uname, nick, first_name, user_id),
             )
         return await self.get_user(user_id)
 
@@ -226,13 +322,15 @@ class Storage:
         )
         return users["c"], deals["c"], float(money["s"])
 
-    async def create_deal(self, seller_id: int, buyer_id: int) -> int:
+    async def create_deal(self, seller_id: int, buyer_id: int, kind: str = KIND_GOODS) -> int:
+        if kind not in {KIND_GOODS, KIND_TON_RUB}:
+            kind = KIND_GOODS
         cur = await self.execute(
             """
-            INSERT INTO deals (seller_id, buyer_id, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO deals (seller_id, buyer_id, status, kind, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (seller_id, buyer_id, DEAL_PENDING, now(), now()),
+            (seller_id, buyer_id, DEAL_PENDING, kind, now(), now()),
         )
         return cur.lastrowid
 
@@ -250,41 +348,23 @@ class Storage:
             (user_id, user_id, *ACTIVE_DEALS),
         )
 
-    async def touch_deal(
-        self,
-        deal_id: int,
-        *,
-        status: Optional[str] = None,
-        amount: Optional[float] = None,
-        nft_id: Optional[int] = None,
-        description: Optional[str] = None,
-        nft_sent: Optional[int] = None,
-        clear_nft: bool = False,
-    ) -> None:
+    async def touch_deal(self, deal_id: int, **fields) -> None:
         deal = await self.get_deal(deal_id)
         if deal is None:
             return
-        await self.execute(
-            """
-            UPDATE deals SET
-                status = ?,
-                amount = ?,
-                nft_id = ?,
-                description = ?,
-                nft_sent = ?,
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (
-                status if status is not None else deal["status"],
-                amount if amount is not None else deal["amount"],
-                None if clear_nft else (nft_id if nft_id is not None else deal["nft_id"]),
-                description if description is not None else deal["description"],
-                nft_sent if nft_sent is not None else deal["nft_sent"],
-                now(),
-                deal_id,
-            ),
-        )
+        if fields.pop("clear_nft", False):
+            fields["nft_id"] = None
+        if not fields:
+            return
+        sets = ["updated_at = ?"]
+        values: list[Any] = [now()]
+        for key, value in fields.items():
+            if key not in DEAL_FIELDS:
+                raise ValueError(key)
+            sets.append(f"{key} = ?")
+            values.append(value)
+        values.append(deal_id)
+        await self.execute(f"UPDATE deals SET {', '.join(sets)} WHERE id = ?", values)
 
     async def history(self, user_id: int, role: str, limit: int = 15) -> list[aiosqlite.Row]:
         column = "seller_id" if role == "seller" else "buyer_id"

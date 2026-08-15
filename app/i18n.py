@@ -23,6 +23,7 @@ RU = {
     "profile": (
         "<b>Профиль</b>\n\n"
         "ID: <code>{id}</code>\n"
+        "Ник: {nick}\n"
         "Username: @{username}\n"
         "Сделок: {deals}\n"
         "Баланс: <b>{balance} {currency}</b>\n\n"
@@ -37,6 +38,7 @@ RU = {
     "req_card": "Карта",
     "req_phone": "Телефон и банк",
     "req_ton": "TON-адрес",
+    "req_bank_short": "Банк",
     "req_ask_card": "Номер карты, только цифры.",
     "req_ask_phone": "Номер телефона, например +79991234567.",
     "req_ask_bank": "Название банка.",
@@ -68,8 +70,11 @@ RU = {
     "min_amount": "Минимум {min} {currency}.",
     "about": (
         "Гарант для безопасных сделок.\n\n"
-        "Покупатель переводит сумму на баланс бота. Продавец передаёт товар "
-        "(обычный или NFT из инвентаря). Деньги уходят продавцу после подтверждения.\n\n"
+        "Обычная сделка: покупатель замораживает сумму на балансе бота, "
+        "продавец передаёт товар или NFT. Деньги уходят после подтверждения.\n\n"
+        "TON → рубли: продавец кладёт TON на кошелёк V4 гаранта. Покупатель "
+        "переводит рубли по реквизитам продавца. После подтверждения рублей "
+        "бот сам отправляет TON на адрес покупателя.\n\n"
         "Комиссия: {commission}% с суммы сделки, удерживается с продавца.\n"
         "Поддержка: @{support}\n"
         "{chat}"
@@ -77,6 +82,11 @@ RU = {
     "deal_role": "Кем вы будете в сделке?",
     "deal_buyer": "Покупатель",
     "deal_seller": "Продавец",
+    "deal_kind": "Тип сделки?",
+    "deal_kind_goods": "Товар / NFT",
+    "deal_kind_ton": "TON → рубли",
+    "deal_kind_label_goods": "товар / NFT",
+    "deal_kind_label_ton": "TON → рубли",
     "deal_ask_user": "Username второй стороны, без @.",
     "deal_self": "С самим собой сделку открыть нельзя.",
     "deal_missing": "Пользователь не запускал бота.",
@@ -85,9 +95,11 @@ RU = {
     "deal_preview": (
         "Контрагент:\n"
         "ID <code>{id}</code>\n"
+        "Ник: {nick}\n"
         "@{username}\n"
         "Сделок: {deals}\n"
-        "Роль: {role}"
+        "Роль: {role}\n"
+        "Тип: {kind}"
     ),
     "deal_send": "Отправить предложение",
     "deal_reviews": "Отзывы",
@@ -96,7 +108,8 @@ RU = {
         "Предложение сделки #{id}\n"
         "От @{username} (ID <code>{uid}</code>)\n"
         "Сделок у него: {deals}\n"
-        "Вы: {role}"
+        "Вы: {role}\n"
+        "Тип: {kind}"
     ),
     "deal_accept": "Принять",
     "deal_decline": "Отклонить",
@@ -111,8 +124,26 @@ RU = {
         "Условия: {desc}\n"
         "Статус: {status}"
     ),
+    "deal_opened_ton": (
+        "Сделка #{id} · TON → рубли\n"
+        "Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
+        "Продавец: @{seller} (<code>{seller_id}</code>)\n"
+        "TON: <b>{ton}</b>\n"
+        "Рубли: <b>{rub} ₽</b>\n"
+        "Адрес покупателя: <code>{buyer_ton}</code>\n"
+        "Эскроу V4: <code>{escrow}</code>\n"
+        "Комментарий: <code>{comment}</code>\n"
+        "Получено TON: {received}\n"
+        "Реквизиты продавца:\n{req}\n"
+        "Условия: {desc}\n"
+        "Выплата: <code>{payout}</code>\n"
+        "Статус: {status}"
+    ),
     "deal_status_pending": "ожидает принятия",
     "deal_status_open": "открыта",
+    "deal_status_wait_ton": "ждёт TON на эскроу",
+    "deal_status_funded": "TON на гаранте, ждут рубли",
+    "deal_status_rub_sent": "рубли отправлены, ждут подтверждения",
     "deal_status_paid": "оплачена",
     "deal_status_dispute": "спор",
     "deal_status_review": "завершена, отзыв",
@@ -121,6 +152,12 @@ RU = {
     "deal_set_price": "Указать сумму",
     "deal_set_nft": "Прикрепить NFT",
     "deal_set_desc": "Условия",
+    "deal_set_ton": "Сумма TON",
+    "deal_set_rub": "Сумма в рублях",
+    "deal_set_buy_ton": "Мой TON-адрес",
+    "deal_check_ton": "Проверить TON",
+    "deal_rub_paid": "Я отправил рубли",
+    "deal_rub_ok": "Рубли получены",
     "deal_pay": "Оплатить",
     "deal_confirm": "Товар получен",
     "deal_dispute": "Спор",
@@ -230,6 +267,44 @@ RU = {
     "mail_started": "Рассылка пошла.",
     "mail_done": "Рассылка закончена: {ok} доставлено, {fail} ошибок.",
     "active_deal_btn": "К сделке #{id}",
+    "deal_ton_off": "Эскроу TON не настроен. Задайте TON_ADDRESS или TON_MNEMONIC.",
+    "deal_ton_no_req": "Продавцу TON нужны реквизиты: карта или телефон с банком.",
+    "deal_ton_no_refund": "Продавцу TON нужен свой TON-адрес в профиле — на него вернут монеты при отмене.",
+    "deal_ask_ton_amt": "Сколько TON продаёте? Минимум {min}.",
+    "deal_ask_rub_amt": "Сколько рублей должен заплатить покупатель? Минимум {min} ₽.",
+    "deal_ton_set": "Сумма TON: {amount}.",
+    "deal_rub_set": "Сумма в рублях: {amount} ₽.",
+    "deal_ask_buy_ton": "TON-адрес, куда отправить монеты после оплаты рублей (UQ… / EQ…).",
+    "deal_buy_ton_set": "Адрес получателя сохранён.",
+    "deal_ton_deposit": (
+        "Продавец переводит <b>{amount} TON</b> на кошелёк V4 гаранта.\n"
+        "Адрес:\n<code>{address}</code>\n"
+        "Комментарий (обязательно):\n<code>{comment}</code>\n\n"
+        "После перевода нажмите «Проверить TON»."
+    ),
+    "deal_ton_wait": "Перевод TON ещё не найден. Проверьте комментарий и сумму.",
+    "deal_ton_funded": "TON на гаранте. Покупатель переводит рубли по реквизитам продавца.",
+    "deal_ton_funded_buyer": (
+        "TON уже на гаранте. Переведите <b>{rub} ₽</b> продавцу:\n{req}\n\n"
+        "Когда отправите — нажмите «Я отправил рубли»."
+    ),
+    "deal_rub_ask": "Подтверждаете, что отправили рубли продавцу?",
+    "deal_rub_marked": "Отметили оплату рублей. Ждём подтверждения продавца.",
+    "deal_rub_marked_seller": (
+        "Покупатель отметил перевод рублей по сделке #{id}.\n"
+        "Если деньги пришли — подтвердите. TON уйдут на адрес покупателя автоматически."
+    ),
+    "deal_rub_confirm_ask": "Рубли пришли? После подтверждения TON уйдут покупателю.",
+    "deal_ton_sent": "Сделка закрыта. TON отправлены на {address}.\nХеш: <code>{hash}</code>",
+    "deal_ton_sent_buyer": "Продавец подтвердил рубли. TON отправлены на ваш адрес.\nХеш: <code>{hash}</code>",
+    "deal_ton_send_fail": "Не удалось отправить TON с кошелька V4. Администратор получил уведомление.",
+    "deal_ton_manual": "Автоотправка недоступна. Нужно вручную отправить {amount} TON на {address}.",
+    "deal_ton_admin_fail": (
+        "Не отправились TON по сделке #{id}\n"
+        "Куда: <code>{address}</code>\n"
+        "Сумма: {amount} TON\n"
+        "{extra}"
+    ),
 }
 
 EN = {
@@ -255,6 +330,7 @@ EN = {
     "profile": (
         "<b>Profile</b>\n\n"
         "ID: <code>{id}</code>\n"
+        "Nick: {nick}\n"
         "Username: @{username}\n"
         "Deals: {deals}\n"
         "Balance: <b>{balance} {currency}</b>\n\n"
@@ -269,6 +345,7 @@ EN = {
     "req_card": "Card",
     "req_phone": "Phone and bank",
     "req_ton": "TON address",
+    "req_bank_short": "Bank",
     "req_ask_card": "Card number, digits only.",
     "req_ask_phone": "Phone number, e.g. +19995550100.",
     "req_ask_bank": "Bank name.",
@@ -300,8 +377,11 @@ EN = {
     "min_amount": "Minimum {min} {currency}.",
     "about": (
         "Escrow for peer-to-peer deals.\n\n"
-        "The buyer funds the bot balance. The seller delivers the item "
-        "(regular goods or an NFT from inventory). Funds are released after confirmation.\n\n"
+        "Regular deal: the buyer funds the bot balance, the seller delivers goods or an NFT. "
+        "Funds are released after confirmation.\n\n"
+        "TON → RUB: the seller deposits TON into the escrow Wallet V4. The buyer pays rubles "
+        "to the seller's payout details. After the seller confirms the rubles, the bot sends "
+        "TON to the buyer's address automatically.\n\n"
         "Fee: {commission}% of the deal, taken from the seller.\n"
         "Support: @{support}\n"
         "{chat}"
@@ -309,6 +389,11 @@ EN = {
     "deal_role": "Your role in this deal?",
     "deal_buyer": "Buyer",
     "deal_seller": "Seller",
+    "deal_kind": "Deal type?",
+    "deal_kind_goods": "Goods / NFT",
+    "deal_kind_ton": "TON → RUB",
+    "deal_kind_label_goods": "goods / NFT",
+    "deal_kind_label_ton": "TON → RUB",
     "deal_ask_user": "Counterparty username, without @.",
     "deal_self": "You cannot open a deal with yourself.",
     "deal_missing": "This user has never started the bot.",
@@ -317,9 +402,11 @@ EN = {
     "deal_preview": (
         "Counterparty:\n"
         "ID <code>{id}</code>\n"
+        "Nick: {nick}\n"
         "@{username}\n"
         "Deals: {deals}\n"
-        "Your role: {role}"
+        "Your role: {role}\n"
+        "Type: {kind}"
     ),
     "deal_send": "Send offer",
     "deal_reviews": "Reviews",
@@ -328,7 +415,8 @@ EN = {
         "Deal offer #{id}\n"
         "From @{username} (ID <code>{uid}</code>)\n"
         "Their deals: {deals}\n"
-        "You are: {role}"
+        "You are: {role}\n"
+        "Type: {kind}"
     ),
     "deal_accept": "Accept",
     "deal_decline": "Decline",
@@ -343,8 +431,26 @@ EN = {
         "Terms: {desc}\n"
         "Status: {status}"
     ),
+    "deal_opened_ton": (
+        "Deal #{id} · TON → RUB\n"
+        "Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
+        "Seller: @{seller} (<code>{seller_id}</code>)\n"
+        "TON: <b>{ton}</b>\n"
+        "Rubles: <b>{rub} ₽</b>\n"
+        "Buyer address: <code>{buyer_ton}</code>\n"
+        "Escrow V4: <code>{escrow}</code>\n"
+        "Memo: <code>{comment}</code>\n"
+        "TON received: {received}\n"
+        "Seller payout details:\n{req}\n"
+        "Terms: {desc}\n"
+        "Payout: <code>{payout}</code>\n"
+        "Status: {status}"
+    ),
     "deal_status_pending": "waiting",
     "deal_status_open": "open",
+    "deal_status_wait_ton": "waiting for TON escrow",
+    "deal_status_funded": "TON locked, waiting for rubles",
+    "deal_status_rub_sent": "rubles sent, waiting confirmation",
     "deal_status_paid": "paid",
     "deal_status_dispute": "dispute",
     "deal_status_review": "completed, review",
@@ -353,6 +459,12 @@ EN = {
     "deal_set_price": "Set amount",
     "deal_set_nft": "Attach NFT",
     "deal_set_desc": "Terms",
+    "deal_set_ton": "TON amount",
+    "deal_set_rub": "Ruble amount",
+    "deal_set_buy_ton": "My TON address",
+    "deal_check_ton": "Check TON",
+    "deal_rub_paid": "I sent the rubles",
+    "deal_rub_ok": "Rubles received",
     "deal_pay": "Pay",
     "deal_confirm": "Item received",
     "deal_dispute": "Dispute",
@@ -462,6 +574,44 @@ EN = {
     "mail_started": "Broadcast started.",
     "mail_done": "Broadcast finished: {ok} delivered, {fail} failed.",
     "active_deal_btn": "Open deal #{id}",
+    "deal_ton_off": "TON escrow is not configured. Set TON_ADDRESS or TON_MNEMONIC.",
+    "deal_ton_no_req": "The TON seller needs payout details: a card or phone plus bank.",
+    "deal_ton_no_refund": "The TON seller needs a TON address in the profile for refunds.",
+    "deal_ask_ton_amt": "How much TON are you selling? Minimum {min}.",
+    "deal_ask_rub_amt": "How many rubles should the buyer pay? Minimum {min} ₽.",
+    "deal_ton_set": "TON amount: {amount}.",
+    "deal_rub_set": "Ruble amount: {amount} ₽.",
+    "deal_ask_buy_ton": "TON address that should receive coins after the ruble payment (UQ… / EQ…).",
+    "deal_buy_ton_set": "Recipient address saved.",
+    "deal_ton_deposit": (
+        "The seller sends <b>{amount} TON</b> to the escrow Wallet V4.\n"
+        "Address:\n<code>{address}</code>\n"
+        "Memo (required):\n<code>{comment}</code>\n\n"
+        "After sending, tap Check TON."
+    ),
+    "deal_ton_wait": "TON transfer not found yet. Check the memo and amount.",
+    "deal_ton_funded": "TON is in escrow. The buyer should pay rubles using the seller details.",
+    "deal_ton_funded_buyer": (
+        "TON is already in escrow. Send <b>{rub} ₽</b> to the seller:\n{req}\n\n"
+        "When done, tap I sent the rubles."
+    ),
+    "deal_rub_ask": "Confirm that you sent rubles to the seller?",
+    "deal_rub_marked": "Ruble payment marked. Waiting for the seller to confirm.",
+    "deal_rub_marked_seller": (
+        "The buyer marked a ruble transfer for deal #{id}.\n"
+        "If the money arrived, confirm. TON will be sent to the buyer automatically."
+    ),
+    "deal_rub_confirm_ask": "Did the rubles arrive? Confirming sends TON to the buyer.",
+    "deal_ton_sent": "Deal closed. TON sent to {address}.\nHash: <code>{hash}</code>",
+    "deal_ton_sent_buyer": "The seller confirmed the rubles. TON were sent to your address.\nHash: <code>{hash}</code>",
+    "deal_ton_send_fail": "Could not send TON from the V4 wallet. An admin has been notified.",
+    "deal_ton_manual": "Auto-send is unavailable. Send {amount} TON to {address} manually.",
+    "deal_ton_admin_fail": (
+        "TON payout failed for deal #{id}\n"
+        "To: <code>{address}</code>\n"
+        "Amount: {amount} TON\n"
+        "{extra}"
+    ),
 }
 
 LOCALES = {"ru": RU, "en": EN}

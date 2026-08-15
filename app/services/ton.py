@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Optional
 
@@ -10,15 +11,15 @@ from app.config import Settings
 log = logging.getLogger("ton")
 
 
-async def incoming_by_comment(settings: Settings, comment: str) -> Optional[float]:
-    if not settings.ton_address:
+async def incoming_by_comment(settings: Settings, comment: str, address: str | None = None) -> Optional[float]:
+    target = (address or settings.ton_address or "").strip()
+    if not target or not comment:
         return None
-    address = settings.ton_address
-    params = {"address": address, "limit": 30}
+    params = {"address": target, "limit": 40}
     headers = {}
     if settings.ton_api_key:
         headers["X-API-Key"] = settings.ton_api_key
-    url = "https://toncenter.com/api/v2/getTransactions"
+    url = "https://testnet.toncenter.com/api/v2/getTransactions" if settings.ton_network.lower() == "testnet" else "https://toncenter.com/api/v2/getTransactions"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, params=params, headers=headers, timeout=20) as resp:
@@ -49,3 +50,140 @@ def ton_to_currency(ton_amount: float, settings: Settings, requested: float) -> 
     if ton_amount > 0:
         return requested
     return None
+
+
+def enough_ton(got: float, need: float) -> bool:
+    return got + 1e-9 >= max(need - 0.001, 0)
+
+
+def payout_ton(amount: float, commission: float, received: float, gas: float) -> float:
+    payout = round(float(amount) * (100 - commission) / 100, 9)
+    room = round(float(received) - max(gas, 0), 9)
+    if room < payout:
+        payout = room
+    return max(payout, 0)
+
+
+class TonEscrow:
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self._wallet = None
+        self._client = None
+        self.address = (settings.ton_address or "").strip()
+        self.can_send = False
+        self._nano = False
+
+    async def connect(self) -> None:
+        mnemonic = (self.settings.ton_mnemonic or "").strip()
+        if not mnemonic:
+            return
+        words = mnemonic.split()
+        if len(words) not in (12, 24):
+            log.warning("TON_MNEMONIC must be 12 or 24 words")
+            return
+        is_testnet = self.settings.ton_network.lower() == "testnet"
+        wallet = None
+        nano = False
+        try:
+            from ton_core import NetworkGlobalID
+            from tonutils.clients import ToncenterClient
+            from tonutils.contracts import WalletV4R2
+
+            net = NetworkGlobalID.TESTNET if is_testnet else NetworkGlobalID.MAINNET
+            kwargs = {"network": net}
+            if self.settings.ton_api_key:
+                kwargs["api_key"] = self.settings.ton_api_key
+            client = ToncenterClient(**kwargs)
+            if hasattr(client, "connect"):
+                await client.connect()
+            result = WalletV4R2.from_mnemonic(client, words)
+            if inspect.isawaitable(result):
+                result = await result
+            wallet, *_ = result
+            self._client = client
+            nano = True
+        except Exception:
+            try:
+                from tonutils.client import ToncenterV3Client
+                from tonutils.wallet import WalletV4R2
+
+                kwargs = {"is_testnet": is_testnet, "rps": 1, "max_retries": 1}
+                if self.settings.ton_api_key:
+                    kwargs["api_key"] = self.settings.ton_api_key
+                try:
+                    client = ToncenterV3Client(**kwargs)
+                except TypeError:
+                    kwargs.pop("api_key", None)
+                    client = ToncenterV3Client(**kwargs)
+                result = WalletV4R2.from_mnemonic(client, words)
+                if inspect.isawaitable(result):
+                    result = await result
+                wallet, *_ = result
+                self._client = client
+            except Exception:
+                log.exception("ton V4 wallet init failed")
+                return
+        self._wallet = wallet
+        self._nano = nano
+        self.can_send = True
+        derived = ""
+        try:
+            derived = wallet.address.to_str(is_user_friendly=True, is_bounceable=False)
+        except TypeError:
+            try:
+                derived = wallet.address.to_str()
+            except Exception:
+                derived = str(wallet.address)
+        if self.address and derived and self.address != derived:
+            log.warning("TON_ADDRESS differs from WalletV4R2: env=%s derived=%s", self.address, derived)
+        if derived:
+            self.address = derived
+            self.settings.ton_address = derived
+        log.info("ton escrow %s send=%s", self.address, self.can_send)
+
+    async def incoming(self, comment: str) -> Optional[float]:
+        return await incoming_by_comment(self.settings, comment, address=self.address)
+
+    async def send(self, dest: str, amount: float, comment: str = "") -> Optional[str]:
+        if not self._wallet or amount <= 0:
+            return None
+        payload = amount
+        if self._nano:
+            try:
+                from ton_core import to_nano
+
+                payload = to_nano(amount)
+            except Exception:
+                payload = int(round(amount * 1_000_000_000))
+        try:
+            tx = await self._wallet.transfer(
+                destination=dest,
+                amount=payload,
+                body=comment or None,
+            )
+        except Exception:
+            log.exception("ton transfer failed")
+            return None
+        if tx is None:
+            return None
+        if hasattr(tx, "normalized_hash"):
+            return str(tx.normalized_hash)
+        return str(tx)
+
+    async def close(self) -> None:
+        client = self._client
+        self._wallet = None
+        self._client = None
+        self.can_send = False
+        self._nano = False
+        if client is None:
+            return
+        closer = getattr(client, "close", None) or getattr(client, "aclose", None)
+        if closer is None:
+            return
+        try:
+            result = closer()
+            if inspect.isawaitable(result):
+                await result
+        except Exception:
+            pass

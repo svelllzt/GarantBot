@@ -5,9 +5,10 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
 from app.i18n import t
-from app.storage import DEAL_CLOSED, DEAL_PENDING
+from app.storage import DEAL_CLOSED, DEAL_PENDING, KIND_TON_RUB
 
 _AMOUNT = re.compile(r"^\d+([.,]\d{1,2})?$")
+_TON_AMT = re.compile(r"^\d+([.,]\d{1,9})?$")
 _CARD = re.compile(r"^\d{13,19}$")
 _PHONE = re.compile(r"^\+\d{10,15}$")
 _TON = re.compile(r"^(UQ|EQ|0:|kQ)[A-Za-z0-9_-]{20,}$")
@@ -24,6 +25,16 @@ def parse_amount(text: str) -> float | None:
     if not _AMOUNT.match(raw):
         return None
     value = round(float(raw), 2)
+    if value <= 0 or value > 1_000_000:
+        return None
+    return value
+
+
+def parse_ton(text: str) -> float | None:
+    raw = (text or "").strip().replace(" ", "").replace(",", ".")
+    if not _TON_AMT.match(raw):
+        return None
+    value = round(float(raw), 9)
     if value <= 0 or value > 1_000_000:
         return None
     return value
@@ -72,6 +83,38 @@ def seller_payout(amount: float, commission: float) -> float:
     return round(float(amount) * (100 - commission) / 100, 2)
 
 
+def money_ton(value) -> str:
+    if value is None:
+        return "—"
+    text = f"{float(value):.9f}".rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def is_ton_deal(deal) -> bool:
+    try:
+        return deal["kind"] == KIND_TON_RUB
+    except (KeyError, IndexError, TypeError):
+        return False
+
+
+def has_rub_req(user) -> bool:
+    if user is None:
+        return False
+    if user["card"]:
+        return True
+    return bool(user["phone"] and user["bank_name"])
+
+
+def seller_req_text(user, lang: str) -> str:
+    if user is None:
+        return t(lang, "not_set")
+    return (
+        f"{t(lang, 'req_card')}: {dash(user['card'], lang)}\n"
+        f"{t(lang, 'req_phone')}: {dash(user['phone'], lang)}\n"
+        f"{t(lang, 'req_bank_short')}: {dash(user['bank_name'], lang)}"
+    )
+
+
 def is_cancel(text: str) -> bool:
     value = (text or "").strip().lower()
     return value in {"/cancel", "отмена", "cancel", "❌ отмена", "❌ cancel"}
@@ -82,20 +125,44 @@ def profile_text(user, lang: str, currency: str) -> str:
         lang,
         "profile",
         id=user["user_id"],
+        nick=h(user["nick"] or user["first_name"] or "-"),
         username=username_of(user),
         deals=user["deals_count"],
         balance=money(user["balance"]),
         currency=currency,
         card=dash(user["card"], lang),
-        phone=dash(user["phone"], lang) if not user["bank_name"] else f"{dash(user['phone'], lang)}",
+        phone=dash(user["phone"], lang),
         bank=dash(user["bank_name"], lang),
         ton=dash(user["ton_address"], lang),
     )
 
 
-async def render_deal(db, deal, lang: str, currency: str) -> str:
+async def render_deal(db, deal, lang: str, currency: str, escrow: str = "") -> str:
     buyer = await db.get_user(deal["buyer_id"])
     seller = await db.get_user(deal["seller_id"])
+    if is_ton_deal(deal):
+        req = "—"
+        if deal["status"] in {"funded", "rub_sent", "dispute", "closed"}:
+            req = seller_req_text(seller, lang)
+        return t(
+            lang,
+            "deal_opened_ton",
+            id=deal["id"],
+            buyer=username_of(buyer) if buyer else "-",
+            buyer_id=deal["buyer_id"],
+            seller=username_of(seller) if seller else "-",
+            seller_id=deal["seller_id"],
+            ton=money_ton(deal["ton_amount"]),
+            rub=money(deal["rub_amount"]),
+            buyer_ton=dash(deal["buyer_ton"], lang),
+            escrow=escrow or "—",
+            comment=deal["ton_comment"] or "—",
+            received=money_ton(deal["ton_received"]) if deal["ton_received"] else "—",
+            req=req,
+            desc=h(deal["description"]) if deal["description"] else "—",
+            status=t(lang, deal_status_key(deal["status"])),
+            payout=deal["payout_hash"] or "—",
+        )
     nft = await db.get_nft(deal["nft_id"]) if deal["nft_id"] else None
     amount = f"{money(deal['amount'])} {currency}" if deal["amount"] is not None else "—"
     return t(
@@ -115,12 +182,16 @@ async def render_deal(db, deal, lang: str, currency: str) -> str:
 
 def history_line(deal, user_id: int, peer_name: str, lang: str, currency: str) -> str:
     seller = user_id == deal["seller_id"]
+    if is_ton_deal(deal):
+        amount = f"{money_ton(deal['ton_amount'])} TON / {money(deal['rub_amount'])} ₽"
+    else:
+        amount = f"{money(deal['amount'])} {currency}" if deal["amount"] else "—"
     return t(
         lang,
         "history_line",
         id=deal["id"],
         role=t(lang, "deal_seller" if seller else "deal_buyer"),
-        amount=f"{money(deal['amount'])} {currency}" if deal["amount"] else "—",
+        amount=amount,
         status=t(lang, deal_status_key(deal["status"] if deal["status"] != DEAL_PENDING else DEAL_CLOSED)),
         peer=peer_name,
     )

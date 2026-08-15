@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     ton_address: str = ""
     ton_api_key: str = ""
     ton_rate: float = 0.0
+    ton_mnemonic: str = ""
+    ton_network: str = "mainnet"
+    ton_gas: float = 0.05
+    min_ton_deal: float = 0.1
+    min_rub_deal: float = 1.0
 
     db_path: str = "data/garant.db"
 

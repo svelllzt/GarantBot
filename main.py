@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.handlers import admin, deals, inventory, profile, start
 from app.middlewares import ContextMiddleware
 from app.services.bank import BankAccount
+from app.services.ton import TonEscrow
 from app.storage import Storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -27,8 +28,10 @@ async def main() -> None:
     bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
     bank = BankAccount(settings, db, bot)
+    ton = TonEscrow(settings)
+    await ton.connect()
 
-    mw = ContextMiddleware(db, settings, bank)
+    mw = ContextMiddleware(db, settings, bank, ton)
     dp.update.middleware(mw)
 
     dp.include_router(start.router)
@@ -43,6 +46,7 @@ async def main() -> None:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         await bank.stop()
+        await ton.close()
         await db.close()
         await bot.session.close()
 

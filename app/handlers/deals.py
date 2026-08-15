@@ -14,6 +14,7 @@ from app.keyboards import (
     deal_kb,
     history_kb,
     home_kb,
+    kind_kb,
     nft_pick_kb,
     offer_kb,
     peer_cancel_kb,
@@ -25,23 +26,29 @@ from app.keyboards import (
 from app.services import deals as svc
 from app.services.deals import DealError
 from app.states import DealFlow
-from app.storage import DEAL_OPEN, DEAL_PAID, DEAL_PENDING, NFT_AVAILABLE, Storage
+from app.storage import DEAL_FUNDED, DEAL_OPEN, DEAL_PAID, DEAL_PENDING, DEAL_RUB_SENT, DEAL_WAIT_TON, KIND_TON_RUB, NFT_AVAILABLE, Storage
 from app.util import (
     history_line,
     is_cancel,
+    is_ton_deal,
     money,
+    money_ton,
     nft_title,
     parse_amount,
+    parse_ton,
     render_deal,
+    seller_req_text,
     username_of,
     h,
+    has_rub_req,
 )
 
 router = Router()
 
 
-async def _show_deal(bot, db: Storage, deal, user_id: int, lang: str, settings: Settings, theme: Theme, message=None, edit=False):
-    text = await render_deal(db, deal, lang, settings.currency)
+async def _show_deal(bot, db: Storage, deal, user_id: int, lang: str, settings: Settings, theme: Theme, message=None, edit=False, ton=None):
+    escrow = ton.address if ton is not None else settings.ton_address
+    text = await render_deal(db, deal, lang, settings.currency, escrow=escrow or "")
     markup = deal_kb(lang, theme, deal, user_id)
     if message is not None and edit:
         await message.edit_text(text, reply_markup=markup)
@@ -52,15 +59,36 @@ async def _show_deal(bot, db: Storage, deal, user_id: int, lang: str, settings: 
     await bot.send_message(user_id, text, reply_markup=markup)
 
 
+async def _notify_ton_lock(bot, db: Storage, deal, settings: Settings, theme: Theme, ton) -> None:
+    deal = await db.get_deal(deal["id"])
+    if deal is None or deal["status"] != DEAL_WAIT_TON:
+        return
+    address = (ton.address if ton is not None else settings.ton_address) or ""
+    for uid in (deal["seller_id"], deal["buyer_id"]):
+        user = await db.get_user(uid)
+        lang = user["lang"] or "ru"
+        await bot.send_message(
+            uid,
+            t(
+                lang,
+                "deal_ton_deposit",
+                amount=money_ton(deal["ton_amount"]),
+                address=address,
+                comment=deal["ton_comment"],
+            ),
+        )
+        await _show_deal(bot, db, deal, uid, lang, settings, theme, ton=ton)
+
+
 @router.callback_query(NavCB.filter(F.a == "deal"))
-async def new_deal(call: CallbackQuery, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
+async def new_deal(call: CallbackQuery, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
     await state.clear()
     if not call.from_user.username:
         await call.answer(t(lang, "need_username"), show_alert=True)
         return
     active = await db.active_deal(call.from_user.id)
     if active:
-        await _show_deal(call.bot, db, active, call.from_user.id, lang, settings, theme, message=call.message, edit=True)
+        await _show_deal(call.bot, db, active, call.from_user.id, lang, settings, theme, message=call.message, edit=True, ton=ton)
         await call.answer()
         return
     await call.message.edit_text(t(lang, "deal_role"), reply_markup=role_kb(lang, theme))
@@ -72,8 +100,32 @@ async def pick_role(call: CallbackQuery, callback_data: DealCB, state: FSMContex
     if not call.from_user.username:
         await call.answer(t(lang, "need_username"), show_alert=True)
         return
-    await state.set_state(DealFlow.username)
     await state.update_data(as_buyer=bool(callback_data.x))
+    await call.message.edit_text(t(lang, "deal_kind"), reply_markup=kind_kb(lang, theme))
+    await call.answer()
+
+
+@router.callback_query(DealCB.filter(F.a == "kind"))
+async def pick_kind(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme, ton):
+    kind = KIND_TON_RUB if callback_data.x else "goods"
+    data = await state.get_data()
+    if "as_buyer" not in data:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    if kind == KIND_TON_RUB:
+        if not ton.address:
+            await call.answer(t(lang, "deal_ton_off"), show_alert=True)
+            return
+        if not data.get("as_buyer"):
+            user = await db.get_user(call.from_user.id)
+            if not has_rub_req(user):
+                await call.answer(t(lang, "deal_ton_no_req"), show_alert=True)
+                return
+            if not user or not user["ton_address"]:
+                await call.answer(t(lang, "deal_ton_no_refund"), show_alert=True)
+                return
+    await state.update_data(kind=kind)
+    await state.set_state(DealFlow.username)
     await call.message.answer(t(lang, "deal_ask_user"), reply_markup=cancel_kb(lang, theme))
     await call.answer()
 
@@ -95,17 +147,21 @@ async def find_peer(message: Message, state: FSMContext, db: Storage, lang: str,
         return
     data = await state.get_data()
     as_buyer = data.get("as_buyer", True)
+    kind = data.get("kind", "goods")
     await state.update_data(peer_id=peer["user_id"])
     await state.set_state(None)
     role = t(lang, "deal_buyer" if as_buyer else "deal_seller")
+    kind_label = t(lang, "deal_kind_label_ton" if kind == KIND_TON_RUB else "deal_kind_label_goods")
     await message.answer(
         t(
             lang,
             "deal_preview",
             id=peer["user_id"],
+            nick=h(peer["nick"] or peer["first_name"] or "-"),
             username=username_of(peer),
             deals=peer["deals_count"],
             role=role,
+            kind=kind_label,
         ),
         reply_markup=preview_kb(lang, theme),
     )
@@ -139,11 +195,12 @@ async def send_offer(call: CallbackQuery, state: FSMContext, db: Storage, lang: 
     data = await state.get_data()
     peer_id = data.get("peer_id")
     as_buyer = data.get("as_buyer", True)
+    kind = data.get("kind", "goods")
     if not peer_id:
         await call.answer(t(lang, "error"), show_alert=True)
         return
     try:
-        deal_id = await svc.open_offer(db, call.from_user.id, peer_id, as_buyer)
+        deal_id = await svc.open_offer(db, call.from_user.id, peer_id, as_buyer, kind)
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
@@ -152,6 +209,7 @@ async def send_offer(call: CallbackQuery, state: FSMContext, db: Storage, lang: 
     peer = await db.get_user(peer_id)
     peer_lang = peer["lang"] or "ru"
     peer_role = t(peer_lang, "deal_seller" if as_buyer else "deal_buyer")
+    kind_label = t(peer_lang, "deal_kind_label_ton" if kind == KIND_TON_RUB else "deal_kind_label_goods")
     await call.message.edit_text(t(lang, "deal_sent"), reply_markup=await home_kb(db, call.from_user.id, lang, theme))
     await call.bot.send_message(
         peer_id,
@@ -163,6 +221,7 @@ async def send_offer(call: CallbackQuery, state: FSMContext, db: Storage, lang: 
             uid=me["user_id"],
             deals=me["deals_count"],
             role=peer_role,
+            kind=kind_label,
         ),
         reply_markup=offer_kb(peer_lang, theme, deal_id),
     )
@@ -170,7 +229,7 @@ async def send_offer(call: CallbackQuery, state: FSMContext, db: Storage, lang: 
 
 
 @router.callback_query(DealCB.filter(F.a == "acc"))
-async def accept_offer(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme):
+async def accept_offer(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
     try:
         await svc.accept(db, callback_data.i, call.from_user.id)
     except DealError as exc:
@@ -181,12 +240,7 @@ async def accept_offer(call: CallbackQuery, callback_data: DealCB, db: Storage, 
     for uid in (deal["seller_id"], deal["buyer_id"]):
         user = await db.get_user(uid)
         user_lang = user["lang"] or "ru"
-        text = await render_deal(db, deal, user_lang, settings.currency)
-        await call.bot.send_message(
-            uid,
-            text,
-            reply_markup=deal_kb(user_lang, theme, deal, uid),
-        )
+        await _show_deal(call.bot, db, deal, uid, user_lang, settings, theme, ton=ton)
     await call.answer()
 
 
@@ -208,12 +262,12 @@ async def decline_offer(call: CallbackQuery, callback_data: DealCB, db: Storage,
 
 
 @router.callback_query(DealCB.filter(F.a == "open"))
-async def reopen(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme):
+async def reopen(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
     deal = await db.get_deal(callback_data.i)
     if deal is None:
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    await _show_deal(call.bot, db, deal, call.from_user.id, lang, settings, theme, message=call.message, edit=True)
+    await _show_deal(call.bot, db, deal, call.from_user.id, lang, settings, theme, message=call.message, edit=True, ton=ton)
     await call.answer()
 
 
@@ -250,7 +304,7 @@ async def save_price(message: Message, state: FSMContext, db: Storage, lang: str
     for uid in (deal["seller_id"], deal["buyer_id"]):
         user = await db.get_user(uid)
         user_lang = user["lang"] or "ru"
-        await _show_deal(message.bot, db, deal, uid, user_lang, settings, theme)
+        await _show_deal(message.bot, db, deal, uid, user_lang, settings, theme, ton=None)
 
 
 @router.callback_query(DealCB.filter(F.a == "desc"))
@@ -284,6 +338,220 @@ async def save_desc(message: Message, state: FSMContext, db: Storage, lang: str,
     await message.answer(t(lang, "deal_desc_set"))
     deal = await db.get_deal(data["deal_id"])
     await _show_deal(message.bot, db, deal, message.from_user.id, lang, settings, theme, message=message)
+
+
+@router.callback_query(DealCB.filter(F.a == "tonamt"))
+async def ask_ton_amt(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
+    deal = await db.get_deal(callback_data.i)
+    if deal is None or deal["seller_id"] != call.from_user.id or deal["status"] != DEAL_OPEN or not is_ton_deal(deal):
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    await state.set_state(DealFlow.ton_amount)
+    await state.update_data(deal_id=deal["id"])
+    await call.message.answer(
+        t(lang, "deal_ask_ton_amt", min=money_ton(settings.min_ton_deal)),
+        reply_markup=cancel_kb(lang, theme),
+    )
+    await call.answer()
+
+
+@router.message(DealFlow.ton_amount)
+async def save_ton_amt(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+    if is_cancel(message.text or ""):
+        return
+    amount = parse_ton(message.text or "")
+    if amount is None or amount < settings.min_ton_deal:
+        await message.answer(t(lang, "min_amount", min=money_ton(settings.min_ton_deal), currency="TON"))
+        return
+    data = await state.get_data()
+    try:
+        locked = await svc.set_ton_amount(db, data["deal_id"], message.from_user.id, amount)
+    except DealError as exc:
+        await message.answer(svc.err_text(lang, exc))
+        await state.clear()
+        return
+    await state.clear()
+    await message.answer(t(lang, "deal_ton_set", amount=money_ton(amount)))
+    deal = await db.get_deal(data["deal_id"])
+    if locked:
+        await _notify_ton_lock(message.bot, db, deal, settings, theme, ton)
+        return
+    await _show_deal(message.bot, db, deal, message.from_user.id, lang, settings, theme, ton=ton)
+
+
+@router.callback_query(DealCB.filter(F.a == "rubamt"))
+async def ask_rub_amt(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
+    deal = await db.get_deal(callback_data.i)
+    if deal is None or deal["seller_id"] != call.from_user.id or deal["status"] != DEAL_OPEN or not is_ton_deal(deal):
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    await state.set_state(DealFlow.rub_amount)
+    await state.update_data(deal_id=deal["id"])
+    await call.message.answer(
+        t(lang, "deal_ask_rub_amt", min=money(settings.min_rub_deal)),
+        reply_markup=cancel_kb(lang, theme),
+    )
+    await call.answer()
+
+
+@router.message(DealFlow.rub_amount)
+async def save_rub_amt(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+    if is_cancel(message.text or ""):
+        return
+    amount = parse_amount(message.text or "")
+    if amount is None or amount < settings.min_rub_deal:
+        await message.answer(t(lang, "min_amount", min=money(settings.min_rub_deal), currency="₽"))
+        return
+    data = await state.get_data()
+    try:
+        locked = await svc.set_rub_amount(db, data["deal_id"], message.from_user.id, amount)
+    except DealError as exc:
+        await message.answer(svc.err_text(lang, exc))
+        await state.clear()
+        return
+    await state.clear()
+    await message.answer(t(lang, "deal_rub_set", amount=money(amount)))
+    deal = await db.get_deal(data["deal_id"])
+    if locked:
+        await _notify_ton_lock(message.bot, db, deal, settings, theme, ton)
+        return
+    await _show_deal(message.bot, db, deal, message.from_user.id, lang, settings, theme, ton=ton)
+
+
+@router.callback_query(DealCB.filter(F.a == "buyaddr"))
+async def ask_buy_ton(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme):
+    deal = await db.get_deal(callback_data.i)
+    if deal is None or deal["buyer_id"] != call.from_user.id or deal["status"] != DEAL_OPEN or not is_ton_deal(deal):
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    await state.set_state(DealFlow.buyer_ton)
+    await state.update_data(deal_id=deal["id"])
+    await call.message.answer(t(lang, "deal_ask_buy_ton"), reply_markup=cancel_kb(lang, theme))
+    await call.answer()
+
+
+@router.message(DealFlow.buyer_ton)
+async def save_buy_ton(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+    if is_cancel(message.text or ""):
+        return
+    address = (message.text or "").strip()
+    data = await state.get_data()
+    try:
+        locked = await svc.set_buyer_ton(db, data["deal_id"], message.from_user.id, address)
+    except DealError as exc:
+        await message.answer(svc.err_text(lang, exc))
+        await state.clear()
+        return
+    await state.clear()
+    await db.set_requisite(message.from_user.id, "ton_address", address)
+    await message.answer(t(lang, "deal_buy_ton_set"))
+    deal = await db.get_deal(data["deal_id"])
+    if locked:
+        await _notify_ton_lock(message.bot, db, deal, settings, theme, ton)
+        return
+    await _show_deal(message.bot, db, deal, message.from_user.id, lang, settings, theme, ton=ton)
+
+
+@router.callback_query(DealCB.filter(F.a == "chkton"))
+async def check_ton(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+    try:
+        await svc.check_ton_deposit(db, ton, callback_data.i, call.from_user.id)
+    except DealError as exc:
+        await call.answer(svc.err_text(lang, exc), show_alert=True)
+        return
+    deal = await db.get_deal(callback_data.i)
+    seller = await db.get_user(deal["seller_id"])
+    buyer = await db.get_user(deal["buyer_id"])
+    req = seller_req_text(seller, buyer["lang"] or "ru")
+    await call.message.answer(t(lang, "deal_ton_funded"))
+    await call.bot.send_message(
+        deal["buyer_id"],
+        t(buyer["lang"] or "ru", "deal_ton_funded_buyer", rub=money(deal["rub_amount"]), req=req),
+    )
+    for uid in (deal["seller_id"], deal["buyer_id"]):
+        user = await db.get_user(uid)
+        await _show_deal(call.bot, db, deal, uid, user["lang"] or "ru", settings, theme, ton=ton)
+    await call.answer()
+
+
+@router.callback_query(DealCB.filter(F.a == "rubpay"))
+async def rub_pay_ask(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, theme: Theme):
+    deal = await db.get_deal(callback_data.i)
+    if deal is None or deal["buyer_id"] != call.from_user.id or deal["status"] != DEAL_FUNDED:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    await call.message.answer(t(lang, "deal_rub_ask"), reply_markup=confirm_kb(lang, theme, "rpaygo", deal["id"]))
+    await call.answer()
+
+
+@router.callback_query(DealCB.filter(F.a == "rpaygo"))
+async def rub_pay_go(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+    if callback_data.x != 1:
+        await call.answer()
+        return
+    try:
+        await svc.mark_rub_paid(db, callback_data.i, call.from_user.id)
+    except DealError as exc:
+        await call.answer(svc.err_text(lang, exc), show_alert=True)
+        return
+    deal = await db.get_deal(callback_data.i)
+    seller = await db.get_user(deal["seller_id"])
+    seller_lang = seller["lang"] or "ru"
+    await call.message.edit_text(t(lang, "deal_rub_marked"))
+    await call.bot.send_message(
+        deal["seller_id"],
+        t(seller_lang, "deal_rub_marked_seller", id=deal["id"]),
+        reply_markup=deal_kb(seller_lang, theme, deal, deal["seller_id"]),
+    )
+    await _show_deal(call.bot, db, deal, call.from_user.id, lang, settings, theme, ton=ton)
+    await call.answer()
+
+
+@router.callback_query(DealCB.filter(F.a == "rubok"))
+async def rub_ok_ask(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, theme: Theme):
+    deal = await db.get_deal(callback_data.i)
+    if deal is None or deal["seller_id"] != call.from_user.id or deal["status"] != DEAL_RUB_SENT:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    await call.message.answer(t(lang, "deal_rub_confirm_ask"), reply_markup=confirm_kb(lang, theme, "rokgo", deal["id"]))
+    await call.answer()
+
+
+@router.callback_query(DealCB.filter(F.a == "rokgo"))
+async def rub_ok_go(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+    if callback_data.x != 1:
+        await call.answer()
+        return
+    deal = await db.get_deal(callback_data.i)
+    try:
+        amount, tx = await svc.confirm_rub(db, settings, ton, callback_data.i, call.from_user.id)
+    except DealError as exc:
+        text = svc.err_text(lang, exc)
+        await call.answer(text, show_alert=True)
+        extra = text
+        dest = deal["buyer_ton"] if deal else ""
+        amt = money_ton(deal["ton_amount"]) if deal else ""
+        for admin_id in settings.admins:
+            try:
+                await call.bot.send_message(
+                    admin_id,
+                    t("ru", "deal_ton_admin_fail", id=callback_data.i, address=dest, amount=amt, extra=extra),
+                )
+            except Exception:
+                pass
+        return
+    deal = await db.get_deal(callback_data.i)
+    buyer = await db.get_user(deal["buyer_id"])
+    await call.message.edit_text(
+        t(lang, "deal_ton_sent", address=deal["buyer_ton"], hash=tx),
+        reply_markup=await home_kb(db, call.from_user.id, lang, theme),
+    )
+    await call.bot.send_message(
+        deal["buyer_id"],
+        t(buyer["lang"] or "ru", "deal_ton_sent_buyer", hash=tx),
+        reply_markup=await home_kb(db, deal["buyer_id"], buyer["lang"] or "ru", theme),
+    )
+    await call.answer()
 
 
 @router.callback_query(DealCB.filter(F.a == "nft"))
@@ -435,7 +703,7 @@ async def cancel_ask(call: CallbackQuery, callback_data: DealCB, db: Storage, la
     if deal is None:
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    if deal["status"] == DEAL_PAID:
+    if deal["status"] in {DEAL_PAID, DEAL_FUNDED, DEAL_RUB_SENT}:
         await call.answer(t(lang, "deal_cancel_denied"), show_alert=True)
         return
     if deal["status"] == DEAL_PENDING:
@@ -473,10 +741,10 @@ async def cancel_send(call: CallbackQuery, callback_data: DealCB, db: Storage, l
 
 
 @router.callback_query(DealCB.filter(F.a == "canok"))
-async def cancel_ok(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, theme: Theme):
+async def cancel_ok(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, theme: Theme, ton):
     deal = await db.get_deal(callback_data.i)
     try:
-        await svc.cancel_mutual(db, callback_data.i)
+        await svc.cancel_mutual(db, callback_data.i, ton)
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
@@ -516,8 +784,8 @@ async def dispute(call: CallbackQuery, callback_data: DealCB, db: Storage, lang:
         buyer_id=deal["buyer_id"],
         seller=username_of(seller),
         seller_id=deal["seller_id"],
-        amount=money(deal["amount"]),
-        currency=settings.currency,
+        amount=money(deal["amount"]) if not is_ton_deal(deal) else f"{money_ton(deal['ton_amount'])} TON / {money(deal['rub_amount'])} ₽",
+        currency="" if is_ton_deal(deal) else settings.currency,
         nft=nft_title(nft) if nft else t("ru", "deal_nft_none"),
     )
     for admin_id in settings.admins:

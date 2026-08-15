@@ -13,7 +13,7 @@ from app.services import deals as svc
 from app.services.deals import DealError
 from app.states import AdminFlow
 from app.storage import WALLET_DONE, WALLET_REJECTED, Storage
-from app.util import extract_emoji_id, is_cancel, money, parse_amount, paint
+from app.util import extract_emoji_id, is_cancel, is_ton_deal, money, money_ton, parse_amount, paint
 
 router = Router()
 
@@ -172,8 +172,8 @@ async def disputes(call: CallbackQuery, db: Storage, lang: str, settings: Settin
                 buyer_id=deal["buyer_id"],
                 seller=seller["username"] if seller else "-",
                 seller_id=deal["seller_id"],
-                amount=money(deal["amount"]),
-                currency=settings.currency,
+                amount=money(deal["amount"]) if not is_ton_deal(deal) else f"{money_ton(deal['ton_amount'])} TON / {money(deal['rub_amount'])} ₽",
+                currency="" if is_ton_deal(deal) else settings.currency,
                 nft="—" if not deal["nft_id"] else str(deal["nft_id"]),
             ),
             reply_markup=dispute_admin_kb(lang, theme, deal["id"]),
@@ -182,11 +182,11 @@ async def disputes(call: CallbackQuery, db: Storage, lang: str, settings: Settin
 
 
 @router.callback_query(AdminCB.filter(F.a == "win_b"))
-async def win_buyer(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings):
+async def win_buyer(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings, ton):
     if not _admin(settings, call.from_user.id):
         return
     try:
-        await svc.verdict_buyer(db, callback_data.i)
+        await svc.verdict_buyer(db, callback_data.i, ton)
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
@@ -202,11 +202,11 @@ async def win_buyer(call: CallbackQuery, callback_data: AdminCB, db: Storage, la
 
 
 @router.callback_query(AdminCB.filter(F.a == "win_s"))
-async def win_seller(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings):
+async def win_seller(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings, ton):
     if not _admin(settings, call.from_user.id):
         return
     try:
-        await svc.verdict_seller(db, settings, callback_data.i)
+        await svc.verdict_seller(db, settings, callback_data.i, ton)
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
