@@ -23,13 +23,34 @@ python main.py
 
 ## Банковский аккаунт (NFT)
 
-1. `api_id` / `api_hash` — https://my.telegram.org, впишите в `[bank]`
-2. `python scripts/login_bank.py` — логин; сессия и username сами запишутся в `config.ini`
-3. При следующем старте бота сессия обновляется в ini ещё раз
-4. Пользователь шлёт collectible gift на этот аккаунт, бот кладёт его в инвентарь отправителя
-5. В сделке продавец прикрепляет NFT, после оплаты бот переводит подарок покупателю
+Это **отдельный юзер-аккаунт** (не токен гарант-бота). На него шлют NFT-подарки.
 
-Без сессии бот работает, инвентарь просто не наполняется сам.
+Куда пишется сессия: `config.ini` → `[bank]` → `session`. Pyrogram патчить не нужно.
+
+**Без телефона** новая юзер-сессия не создаётся — так устроен Telegram. Варианты:
+
+1. Уже есть selfbot на Pyrogram/pyrofork — скопируйте строку session в `[bank] session`, плюс `api_id` / `api_hash`.
+2. Импорт из файла/папки:
+
+```bash
+python scripts/login_bank.py --from C:\Users\...\selfbot\config\config.json
+python scripts/login_bank.py --from C:\Users\...\selfbot\xxx.session
+python scripts/login_bank.py
+```
+
+Без аргументов скрипт печатает, куда писать сессию.
+
+**С телефоном** (первый раз для NFT-банка):
+
+```bash
+python scripts/login_bank.py --user
+```
+
+Код придёт в Telegram/SMS, после этого `session` сам попадёт в ini.
+
+Telethon-сессия сюда не подойдёт, только Pyrogram/pyrofork.
+
+Без `[bank] session` гарант работает, инвентарь NFT сам не наполняется.
 
 `tgcrypto` ставить не обязательно: без него pyrogram чуть медленнее, на логике это не сказывается.
 
