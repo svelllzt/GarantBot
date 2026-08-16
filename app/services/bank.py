@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
+from pathlib import Path
 from typing import Any, Optional
 
 from app.pyro import Client, RawUpdateHandler, functions, types
@@ -50,6 +52,17 @@ def _stars_int(balance: Any) -> Optional[int]:
     if amount is None:
         return None
     return int(amount)
+
+
+def _stargift(nft) -> Any:
+    slug = str(nft["slug"] or "").strip()
+    slug_cls = getattr(types, "InputSavedStarGiftSlug", None)
+    if slug and slug_cls is not None:
+        return slug_cls(slug=slug)
+    gift_cls = getattr(types, "InputSavedStarGiftUser", None)
+    if gift_cls is None or not nft["msg_id"]:
+        return None
+    return gift_cls(msg_id=int(nft["msg_id"]))
 
 
 def _invoice_stars(form: Any) -> Optional[int]:
@@ -107,10 +120,64 @@ class BankAccount:
             and self.settings.bank_session
         )
 
+    async def _ask(self, prompt: str) -> str:
+        return (await asyncio.to_thread(input, prompt)).strip()
+
+    async def _first_login(self) -> bool:
+        print("\nПервый вход банковского аккаунта (NFT). Код придёт в Telegram/SMS.")
+        print("api_id / api_hash: https://my.telegram.org\n")
+        try:
+            if not self.settings.bank_api_id:
+                raw = await self._ask("api_id: ")
+                if not raw.isdigit():
+                    print("api_id должен быть числом. Банк пропущен, бот всё равно запустится.")
+                    return False
+                self.settings.patch("bank_api_id", raw)
+            if not self.settings.bank_api_hash:
+                raw = await self._ask("api_hash: ")
+                if len(raw) < 8:
+                    print("api_hash пустой. Банк пропущен, бот всё равно запустится.")
+                    return False
+                self.settings.patch("bank_api_hash", raw)
+            workdir = Path(self.settings.db_path).expanduser().resolve().parent
+            workdir.mkdir(parents=True, exist_ok=True)
+            client = Client(
+                name="bank_login",
+                api_id=self.settings.bank_api_id,
+                api_hash=self.settings.bank_api_hash,
+                workdir=str(workdir),
+                workers=1,
+            )
+            await client.start()
+            me = await client.get_me()
+            session = await client.export_session_string()
+            await client.stop()
+            for leftover in (workdir / "bank_login.session", workdir / "bank_login.session-journal"):
+                try:
+                    if leftover.exists():
+                        leftover.unlink()
+                except OSError:
+                    pass
+            if not session:
+                print("Не удалось получить session. Банк пропущен.")
+                return False
+            self.settings.patch("bank_session", session)
+            if me.username:
+                self.settings.patch("bank_username", me.username)
+            print(f"Банк сохранён: @{me.username or '-'} id={me.id}\n")
+            return True
+        except Exception:
+            log.exception("bank first login failed")
+            print("Банк не вошёл. Бот всё равно запустится без NFT.")
+            return False
+
     async def start(self) -> None:
         if not self.enabled():
-            log.warning("bank account skipped: empty [bank] session")
-            return
+            if sys.stdin.isatty():
+                await self._first_login()
+            if not self.enabled():
+                log.warning("bank account skipped: empty [bank] session (run python main.py in a console to log in)")
+                return
         self.client = Client(
             name="bank",
             api_id=self.settings.bank_api_id,
@@ -209,6 +276,9 @@ class BankAccount:
         if sender is None:
             return
         meta = _gift_meta(gift)
+        if not meta["is_unique"]:
+            log.info("skip non-unique gift from %s", sender)
+            return
         nft_id = await self.db.add_nft(
             sender,
             gift_id=meta["gift_id"],
@@ -237,17 +307,16 @@ class BankAccount:
             return await self._transfer(nft, to_user_id)
 
     async def _transfer(self, nft, to_user_id: int) -> str:
-        if nft is None or not nft["msg_id"]:
+        if nft is None:
             return "fail"
         if self.client is None:
             return "offline"
-        gift_cls = getattr(types, "InputSavedStarGiftUser", None)
         transfer_fn = getattr(functions.payments, "TransferStarGift", None)
-        if gift_cls is None or transfer_fn is None:
+        stargift = _stargift(nft)
+        if transfer_fn is None or stargift is None:
             return "fail"
         try:
             peer = await self.client.resolve_peer(to_user_id)
-            stargift = gift_cls(msg_id=int(nft["msg_id"]))
             try:
                 await self.client.invoke(transfer_fn(stargift=stargift, to_id=peer))
                 return "ok"

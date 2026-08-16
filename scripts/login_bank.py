@@ -18,7 +18,11 @@ def _help(path: Path) -> str:
   {path}
   секция [bank], ключ session
 
-Новую юзер-сессию без телефона Telegram не выдаёт. Код приходит в SMS / Telegram.
+Первый вход по телефону — просто:
+
+      python main.py
+
+Бот сам спросит api_id, api_hash, телефон и код, если [bank] session пустой.
 
 Без телефона можно так:
   • вставить уже готовую строку session в [bank] session
@@ -29,16 +33,12 @@ def _help(path: Path) -> str:
       python scripts/login_bank.py --from путь/к/имя.session
       python scripts/login_bank.py --from папка_selfbot
 
-Юзер-аккаунт для NFT-банка (нужен телефон один раз):
-
-      python scripts/login_bank.py --user
-
 Нужен пакет pyrofork, не pyrogram. Если падает event loop:
 
       pip uninstall -y pyrogram
       pip install -U "pyrofork>=2.3.45"
 
-api_id и api_hash всё равно нужны в [bank] — https://my.telegram.org
+api_id и api_hash: https://my.telegram.org
 """.strip()
 
 
@@ -103,28 +103,6 @@ async def _export_from_file(settings, session_file: Path) -> tuple[str, str, int
     return session, me.username or "", me.id
 
 
-async def _login_user(settings) -> tuple[str, str, int]:
-    if not settings.bank_api_id or not settings.bank_api_hash:
-        raise SystemExit("Укажите api_id и api_hash в config.ini секция [bank] (my.telegram.org)")
-    workdir = ROOT / "data"
-    workdir.mkdir(parents=True, exist_ok=True)
-    async with Client(
-        name="bank_login",
-        api_id=settings.bank_api_id,
-        api_hash=settings.bank_api_hash,
-        workdir=str(workdir),
-    ) as client:
-        me = await client.get_me()
-        session = await client.export_session_string()
-    leftover = workdir / "bank_login.session"
-    if leftover.exists():
-        leftover.unlink()
-    journal = workdir / "bank_login.session-journal"
-    if journal.exists():
-        journal.unlink()
-    return session, me.username or "", me.id
-
-
 def _save(settings, session: str, username: str, user_id: int) -> None:
     settings.patch("bank_session", session)
     if username:
@@ -139,63 +117,61 @@ def main() -> None:
         add_help=True,
         description="Пишет Pyrogram-сессию в config.ini [bank] session",
     )
-    parser.add_argument("--user", action="store_true", help="войти по номеру телефона (юзер для NFT)")
+    parser.add_argument("--user", action="store_true", help="первый вход теперь в python main.py")
     parser.add_argument("--from", dest="source", help="готовая session / config.json / папка selfbot / .session")
     args = parser.parse_args()
-    if not args.user and not args.source:
+    if args.user:
+        print("Первый вход банка — python main.py")
+        print("Телефон и код спросит сам бот, если [bank] session пустой.")
+        print("Готовую сессию: python scripts/login_bank.py --from путь")
+        return
+    if not args.source:
         print(_help(settings.path))
         if settings.bank_session:
             print("Сейчас [bank] session уже заполнен.")
         else:
             print("Сейчас [bank] session пустой.")
         return
-    if args.source:
-        src = Path(args.source).expanduser()
-        if not src.exists():
-            raise SystemExit(f"Нет файла: {src}")
-        if src.is_dir():
-            src = _find_in_dir(src)
-        if src.suffix.lower() == ".json":
-            data = _read_json(src)
-            api_id = _json_pick(data, "api_id", "apiid", "app_id")
-            api_hash = _json_pick(data, "api_hash", "apihash", "app_hash")
-            session = _session_from_json(data)
-            username = _json_pick(data, "username", "bank_username")
-            if api_id:
-                settings.patch("bank_api_id", api_id)
-            if api_hash:
-                settings.patch("bank_api_hash", api_hash)
-            if not session:
-                raise SystemExit(
-                    f"В {src} нет session-строки Pyrogram.\n"
-                    "Telethon-сессия сюда не подходит. Нужен ключ session / session_string."
-                )
-            settings.patch("bank_session", session)
-            if username:
-                settings.patch("bank_username", username)
-            print(f"импорт из {src}")
-            print(f"patched {settings.path} [bank] session")
-            return
-        if src.suffix.lower() == ".session":
-            session, username, user_id = run(_export_from_file(settings, src))
-            _save(settings, session, username, user_id)
-            return
-        text = src.read_text(encoding="utf-8").strip()
-        if text.startswith("{"):
-            data = json.loads(text)
-            session = _session_from_json(data) if isinstance(data, dict) else ""
-        else:
-            session = text.splitlines()[0].strip()
+    src = Path(args.source).expanduser()
+    if not src.exists():
+        raise SystemExit(f"Нет файла: {src}")
+    if src.is_dir():
+        src = _find_in_dir(src)
+    if src.suffix.lower() == ".json":
+        data = _read_json(src)
+        api_id = _json_pick(data, "api_id", "apiid", "app_id")
+        api_hash = _json_pick(data, "api_hash", "apihash", "app_hash")
+        session = _session_from_json(data)
+        username = _json_pick(data, "username", "bank_username")
+        if api_id:
+            settings.patch("bank_api_id", api_id)
+        if api_hash:
+            settings.patch("bank_api_hash", api_hash)
         if not session:
-            raise SystemExit("В файле нет session-строки")
+            raise SystemExit(
+                f"В {src} нет session-строки Pyrogram.\n"
+                "Telethon-сессия сюда не подходит. Нужен ключ session / session_string."
+            )
         settings.patch("bank_session", session)
+        if username:
+            settings.patch("bank_username", username)
+        print(f"импорт из {src}")
         print(f"patched {settings.path} [bank] session")
         return
-    import pyrogram
-
-    print(f"pyrofork {getattr(pyrogram, '__version__', '?')}")
-    session, username, user_id = run(_login_user(settings))
-    _save(settings, session, username, user_id)
+    if src.suffix.lower() == ".session":
+        session, username, user_id = run(_export_from_file(settings, src))
+        _save(settings, session, username, user_id)
+        return
+    text = src.read_text(encoding="utf-8").strip()
+    if text.startswith("{"):
+        data = json.loads(text)
+        session = _session_from_json(data) if isinstance(data, dict) else ""
+    else:
+        session = text.splitlines()[0].strip()
+    if not session:
+        raise SystemExit("В файле нет session-строки")
+    settings.patch("bank_session", session)
+    print(f"patched {settings.path} [bank] session")
 
 
 if __name__ == "__main__":

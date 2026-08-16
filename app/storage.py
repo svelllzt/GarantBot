@@ -33,6 +33,7 @@ ACTIVE_DEALS = (
     DEAL_RUB_SENT,
     DEAL_PAID,
     DEAL_DISPUTE,
+    DEAL_REVIEW,
 )
 DEAL_FIELDS = {
     "status",
@@ -263,8 +264,25 @@ class Storage:
                 "category": "TEXT NOT NULL DEFAULT 'goods'",
                 "title": "TEXT",
                 "channel_msg_id": "INTEGER",
+                "nft_sent": "INTEGER NOT NULL DEFAULT 0",
+                "buyer_id": "INTEGER",
                 "dispute_reason": "TEXT",
                 "dispute_by": "INTEGER",
+            },
+        )
+        await self._add_missing(
+            "inventory",
+            {
+                "gift_id": "TEXT",
+                "slug": "TEXT",
+                "title": "TEXT",
+                "num": "INTEGER",
+                "msg_id": "INTEGER",
+                "from_user_id": "INTEGER",
+                "status": "TEXT",
+                "deal_id": "INTEGER",
+                "is_unique": "INTEGER NOT NULL DEFAULT 1",
+                "created_at": "INTEGER NOT NULL DEFAULT 0",
             },
         )
         await self.db.execute(
@@ -276,6 +294,12 @@ class Storage:
         )
         await self.db.execute(
             "CREATE INDEX IF NOT EXISTS idx_deals_ton_comment ON deals(ton_comment)"
+        )
+        await self.db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_wd_one_pending ON withdrawals(user_id) WHERE status = 'pending'"
+        )
+        await self.db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_inv_slug ON inventory(slug) WHERE IFNULL(slug, '') != ''"
         )
 
     async def execute(self, sql: str, params: Iterable[Any] = ()) -> aiosqlite.Cursor:
@@ -390,9 +414,9 @@ class Storage:
         escrow = await self.fetchone(
             f"""
             SELECT COALESCE(SUM(amount), 0) AS s FROM deals
-            WHERE status IN (?, ?, ?, ?)
+            WHERE status IN (?, ?, ?, ?, ?)
             """,
-            (DEAL_PAID, DEAL_FUNDED, DEAL_RUB_SENT, DEAL_DISPUTE),
+            (DEAL_PAID, DEAL_FUNDED, DEAL_RUB_SENT, DEAL_DISPUTE, DEAL_REVIEW),
         )
         by_status = await self.fetchall(
             "SELECT status, COUNT(*) AS c FROM deals GROUP BY status"
@@ -444,9 +468,45 @@ class Storage:
         status: str | None = None,
         amount: float | None = None,
         description: str | None = None,
-    ) -> int:
+        exclusive: bool = False,
+    ) -> Optional[int]:
         if kind not in {KIND_GOODS, KIND_TON_RUB}:
             kind = KIND_GOODS
+        stamp = now()
+        values = (
+            seller_id,
+            buyer_id,
+            status or DEAL_PENDING,
+            kind,
+            category or "goods",
+            (title or "")[:120] or None,
+            amount,
+            description,
+            stamp,
+            stamp,
+        )
+        if exclusive:
+            placeholders = ",".join("?" * len(ACTIVE_DEALS))
+            cur = await self.execute(
+                f"""
+                INSERT INTO deals (
+                    seller_id, buyer_id, status, kind, category, title, amount, description, created_at, updated_at
+                )
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM deals
+                    WHERE status IN ({placeholders})
+                      AND (
+                        seller_id = ? OR buyer_id = ?
+                        OR (? != 0 AND (seller_id = ? OR buyer_id = ?))
+                      )
+                )
+                """,
+                (*values, *ACTIVE_DEALS, seller_id, seller_id, buyer_id, buyer_id, buyer_id),
+            )
+            if cur.rowcount != 1:
+                return None
+            return cur.lastrowid
         cur = await self.execute(
             """
             INSERT INTO deals (
@@ -454,18 +514,7 @@ class Storage:
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                seller_id,
-                buyer_id,
-                status or DEAL_PENDING,
-                kind,
-                category or "goods",
-                (title or "")[:120] or None,
-                amount,
-                description,
-                now(),
-                now(),
-            ),
+            values,
         )
         return cur.lastrowid
 
@@ -506,6 +555,35 @@ class Storage:
             values.append(value)
         values.append(deal_id)
         await self.execute(f"UPDATE deals SET {', '.join(sets)} WHERE id = ?", values)
+
+    async def claim_deal(self, deal_id: int, from_status: str, **fields) -> bool:
+        extra = fields.pop("where", None) or {}
+        if fields.pop("clear_nft", False):
+            fields["nft_id"] = None
+        if not fields:
+            return False
+        sets = ["updated_at = ?"]
+        values: list[Any] = [now()]
+        for key, value in fields.items():
+            if key not in DEAL_FIELDS:
+                raise ValueError(key)
+            sets.append(f"{key} = ?")
+            values.append(value)
+        wheres = ["id = ?", "status = ?"]
+        values.extend([deal_id, from_status])
+        for key, value in extra.items():
+            if key not in DEAL_FIELDS:
+                raise ValueError(key)
+            if value is None:
+                wheres.append(f"({key} IS NULL OR {key} = '')")
+            else:
+                wheres.append(f"{key} = ?")
+                values.append(value)
+        cur = await self.execute(
+            f"UPDATE deals SET {', '.join(sets)} WHERE {' AND '.join(wheres)}",
+            values,
+        )
+        return cur.rowcount == 1
 
     async def history(self, user_id: int, role: str, limit: int = 15) -> list[aiosqlite.Row]:
         column = "seller_id" if role == "seller" else "buyer_id"
@@ -555,25 +633,33 @@ class Storage:
             existing = await self.fetchone("SELECT id FROM inventory WHERE msg_id = ?", (msg_id,))
             if existing:
                 return None
-        cur = await self.execute(
-            """
-            INSERT INTO inventory
-                (owner_id, gift_id, slug, title, num, msg_id, from_user_id, status, is_unique, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                owner_id,
-                gift_id,
-                slug,
-                title,
-                num,
-                msg_id,
-                from_user_id,
-                NFT_AVAILABLE,
-                int(is_unique),
-                now(),
-            ),
-        )
+        slug_key = (slug or "").strip()
+        if slug_key:
+            existing = await self.fetchone("SELECT id FROM inventory WHERE slug = ?", (slug_key,))
+            if existing:
+                return None
+        try:
+            cur = await self.execute(
+                """
+                INSERT INTO inventory
+                    (owner_id, gift_id, slug, title, num, msg_id, from_user_id, status, is_unique, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    owner_id,
+                    gift_id,
+                    slug_key or slug,
+                    title,
+                    num,
+                    msg_id,
+                    from_user_id,
+                    NFT_AVAILABLE,
+                    int(is_unique),
+                    now(),
+                ),
+            )
+        except aiosqlite.IntegrityError:
+            return None
         return cur.lastrowid
 
     async def get_nft(self, nft_id: int) -> Optional[aiosqlite.Row]:
@@ -614,6 +700,33 @@ class Storage:
             ),
         )
 
+    async def claim_nft(
+        self,
+        nft_id: int,
+        from_status: str,
+        status: str,
+        *,
+        deal_id=...,
+        owner_id=...,
+    ) -> bool:
+        nft = await self.get_nft(nft_id)
+        if nft is None:
+            return False
+        cur = await self.execute(
+            """
+            UPDATE inventory SET status = ?, deal_id = ?, owner_id = ?
+            WHERE id = ? AND status = ?
+            """,
+            (
+                status,
+                nft["deal_id"] if deal_id is ... else deal_id,
+                nft["owner_id"] if owner_id is ... else owner_id,
+                nft_id,
+                from_status,
+            ),
+        )
+        return cur.rowcount == 1
+
     async def create_deposit(self, user_id: int, amount: float, comment: str) -> int:
         cur = await self.execute(
             """
@@ -642,14 +755,24 @@ class Storage:
             (status, tx_hash, deposit_id),
         )
 
-    async def create_withdraw(self, user_id: int, amount: float, method: str, details: str) -> int:
+    async def claim_deposit(self, deposit_id: int, status: str, tx_hash: Optional[str] = None) -> bool:
         cur = await self.execute(
-            """
-            INSERT INTO withdrawals (user_id, amount, method, details, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (user_id, round(amount, 2), method, details, WALLET_PENDING, now()),
+            "UPDATE deposits SET status = ?, tx_hash = COALESCE(?, tx_hash) WHERE id = ? AND status = ?",
+            (status, tx_hash, deposit_id, WALLET_PENDING),
         )
+        return cur.rowcount == 1
+
+    async def create_withdraw(self, user_id: int, amount: float, method: str, details: str) -> int:
+        try:
+            cur = await self.execute(
+                """
+                INSERT INTO withdrawals (user_id, amount, method, details, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, round(amount, 2), method, details, WALLET_PENDING, now()),
+            )
+        except aiosqlite.IntegrityError:
+            raise ValueError("pending")
         return cur.lastrowid
 
     async def get_withdraw(self, withdraw_id: int) -> Optional[aiosqlite.Row]:
@@ -663,6 +786,13 @@ class Storage:
 
     async def finish_withdraw(self, withdraw_id: int, status: str) -> None:
         await self.execute("UPDATE withdrawals SET status = ? WHERE id = ?", (status, withdraw_id))
+
+    async def claim_withdraw(self, withdraw_id: int, status: str) -> bool:
+        cur = await self.execute(
+            "UPDATE withdrawals SET status = ? WHERE id = ? AND status = ?",
+            (status, withdraw_id, WALLET_PENDING),
+        )
+        return cur.rowcount == 1
 
     async def button_map(self) -> dict[str, dict]:
         if self._buttons is None:

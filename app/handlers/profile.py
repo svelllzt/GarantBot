@@ -161,7 +161,9 @@ async def check_deposit(call: CallbackQuery, callback_data: WalletCB, db: Storag
     if credited is None:
         await call.answer(t(lang, "deposit_wait"), show_alert=True)
         return
-    await db.finish_deposit(deposit["id"], WALLET_DONE)
+    if not await db.claim_deposit(deposit["id"], WALLET_DONE):
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     await db.change_balance(call.from_user.id, float(deposit["amount"]))
     from app.keyboards import home_kb
 
@@ -193,7 +195,7 @@ async def withdraw_amount(message: Message, state: FSMContext, db: Storage, lang
         await message.answer(t(lang, "min_amount", min=f"{settings.min_withdraw:.2f}", currency=settings.currency))
         return
     user = await db.get_user(message.from_user.id)
-    if float(user["balance"]) < amount:
+    if user is None or float(user["balance"] or 0) < amount:
         await message.answer(t(lang, "withdraw_low"))
         await state.clear()
         return
@@ -218,6 +220,9 @@ async def withdraw_method(
         await call.answer(t(lang, "error"), show_alert=True)
         return
     user = await db.get_user(call.from_user.id)
+    if user is None:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     method = callback_data.m
     if method == "card":
         details = user["card"]
@@ -233,7 +238,12 @@ async def withdraw_method(
     except ValueError:
         await call.answer(t(lang, "withdraw_low"), show_alert=True)
         return
-    wid = await db.create_withdraw(call.from_user.id, float(amount), method, details)
+    try:
+        wid = await db.create_withdraw(call.from_user.id, float(amount), method, details)
+    except ValueError:
+        await db.change_balance(call.from_user.id, float(amount))
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     await state.clear()
     from app.keyboards import home_kb
 

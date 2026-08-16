@@ -34,7 +34,7 @@ except RuntimeError as exc:
         "Нужен pyrofork:\n"
         "  pip uninstall -y pyrogram\n"
         "  pip install -U \"pyrofork>=2.3.45\"\n"
-        "Дальше: python scripts/login_bank.py --user"
+        "Дальше: python main.py"
     ) from exc
 
 
@@ -52,7 +52,7 @@ def ensure_pyrofork() -> None:
         f"Установлен pyrogram {ver}, боту нужен pyrofork (NFT и Stars).{extra}\n\n"
         "  pip uninstall -y pyrogram\n"
         "  pip install -U \"pyrofork>=2.3.45\"\n"
-        "  python scripts/login_bank.py --user"
+        "  python main.py"
     )
 
 

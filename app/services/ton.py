@@ -47,8 +47,6 @@ def ton_to_currency(ton_amount: float, settings: Settings, requested: float) -> 
         if credited + 0.01 >= requested:
             return requested
         return None
-    if ton_amount > 0:
-        return requested
     return None
 
 

@@ -234,6 +234,7 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int) -> InlineKeyboardMarkup
     if status == DEAL_WAIT_TON:
         theme.add(kb, "deal_check_ton", lang, callback_data=DealCB(a="chkton", i=deal["id"]).pack())
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
+        theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
     if status == DEAL_FUNDED:
         if not seller:
             theme.add(kb, "deal_rub_paid", lang, callback_data=DealCB(a="rubpay", i=deal["id"]).pack())

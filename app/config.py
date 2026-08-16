@@ -78,6 +78,8 @@ ENV_TO_ATTR = {
     "SUPPORT_CHAT": "support_chat",
     "COMMISSION_PERCENT": "commission_percent",
     "CURRENCY": "currency",
+    "DEALS_CHANNEL": "deals_channel",
+    "ASSETS": "assets_dir",
     "MIN_DEPOSIT": "min_deposit",
     "MIN_WITHDRAW": "min_withdraw",
     "BANK_API_ID": "bank_api_id",

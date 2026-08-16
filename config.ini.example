@@ -1,10 +1,9 @@
 ; Скопируйте: cp config.ini.example config.ini
 ;
 ; Pyrogram-сессия — это строка в [bank] session, не патч библиотеки.
+; Первый вход по телефону: python main.py (бот сам спросит api_id, телефон, код).
 ; Без телефона: вставьте готовую session ИЛИ
 ;   python scripts/login_bank.py --from путь/к/selfbot
-; Новый юзер для NFT (телефон один раз):
-;   python scripts/login_bank.py --user
 
 [bot]
 token =

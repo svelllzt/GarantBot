@@ -94,8 +94,3 @@ class ContextMiddleware(BaseMiddleware):
 
 def install(dp: Dispatcher, mw: ContextMiddleware) -> None:
     dp.update.outer_middleware(mw)
-    dp.message.middleware(mw)
-    dp.callback_query.middleware(mw)
-    edited = getattr(dp, "edited_message", None)
-    if edited is not None:
-        edited.middleware(mw)

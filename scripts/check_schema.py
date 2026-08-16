@@ -2,7 +2,9 @@ import asyncio
 import os
 import tempfile
 
-from app.storage import KIND_TON_RUB, Storage
+from app.i18n import EN, RU
+from app.services.ton import ton_to_currency
+from app.storage import DEAL_OPEN, DEAL_PAID, KIND_TON_RUB, NFT_AVAILABLE, NFT_LOCKED, Storage
 
 
 async def main() -> None:
@@ -88,6 +90,35 @@ async def main() -> None:
         deal_cols = await db._columns("deals")
         for name in ("category", "title", "channel_msg_id", "kind", "dispute_reason", "dispute_by", "nft_sent"):
             assert name in deal_cols, name
+
+        missing = set(RU) - set(EN)
+        extra = set(EN) - set(RU)
+        assert not missing, missing
+        assert not extra, extra
+
+        class _Rate:
+            ton_rate = 0.0
+
+        assert ton_to_currency(10.0, _Rate(), 100.0) is None
+        _Rate.ton_rate = 10.0
+        assert ton_to_currency(10.0, _Rate(), 100.0) == 100.0
+        assert ton_to_currency(5.0, _Rate(), 100.0) is None
+
+        await db.change_balance(2, 50)
+        paid = await db.create_deal(1, 2, status=DEAL_OPEN, amount=10)
+        assert await db.claim_deal(paid, DEAL_OPEN, status=DEAL_PAID)
+        assert not await db.claim_deal(paid, DEAL_OPEN, status=DEAL_PAID)
+        dep = await db.create_deposit(2, 5, "G2test1")
+        assert await db.claim_deposit(dep, "done")
+        assert not await db.claim_deposit(dep, "done")
+        other = await db.add_nft(1, gift_id="g2", slug="slug", title="Dup", num=1, msg_id=99, from_user_id=1, is_unique=True)
+        assert other is None
+        nft_b = await db.add_nft(1, gift_id="g3", slug="other", title="B", num=2, msg_id=100, from_user_id=1, is_unique=True)
+        assert nft_b
+        assert await db.claim_nft(nft_b, NFT_AVAILABLE, NFT_LOCKED, deal_id=paid)
+        assert not await db.claim_nft(nft_b, NFT_AVAILABLE, NFT_LOCKED, deal_id=paid)
+        exclusive = await db.create_deal(1, 2, exclusive=True)
+        assert exclusive is None
         await db.close()
         print("ok")
     finally:

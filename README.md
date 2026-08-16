@@ -36,6 +36,14 @@ python main.py
 
 Куда пишется сессия: `config.ini` → `[bank]` → `session`. Pyrogram патчить не нужно.
 
+**Первый вход по телефону** — запустите бота в консоли:
+
+```bash
+python main.py
+```
+
+Если `[bank] session` пустой, бот сам спросит `api_id` / `api_hash` (https://my.telegram.org), затем телефон и код из Telegram/SMS. После этого session попадёт в ini, бот продолжит работу.
+
 **Без телефона** новая юзер-сессия не создаётся — так устроен Telegram. Варианты:
 
 1. Уже есть selfbot на Pyrogram/pyrofork — скопируйте строку session в `[bank] session`, плюс `api_id` / `api_hash`.
@@ -47,19 +55,11 @@ python scripts/login_bank.py --from C:\Users\...\selfbot\xxx.session
 python scripts/login_bank.py
 ```
 
-Без аргументов скрипт печатает, куда писать сессию.
-
-**С телефоном** (первый раз для NFT-банка):
-
-```bash
-python scripts/login_bank.py --user
-```
-
-Код придёт в Telegram/SMS, после этого `session` сам попадёт в ini.
+Без аргументов скрипт печатает, куда писать сессию. `login_bank.py --user` больше не логинит — вход в `python main.py`.
 
 Telethon-сессия сюда не подойдёт, только Pyrogram/pyrofork.
 
-Без `[bank] session` гарант работает, инвентарь NFT сам не наполняется.
+Без `[bank] session` гарант работает, инвентарь NFT сам не наполняется. Если бот запущен не из консоли (нет TTY), первый вход пропускается.
 
 `tgcrypto` ставить не обязательно: без него pyrogram чуть медленнее, на логике это не сказывается.
 

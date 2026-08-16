@@ -309,7 +309,6 @@ async def win_buyer(call: CallbackQuery, callback_data: AdminCB, db: Storage, la
             )
         except Exception:
             pass
-    await call.answer()
 
 
 @router.callback_query(AdminCB.filter(F.a == "win_s"))
@@ -337,7 +336,6 @@ async def win_seller(call: CallbackQuery, callback_data: AdminCB, db: Storage, l
             )
         except Exception:
             pass
-    await call.answer()
 
 
 @router.callback_query(AdminCB.filter(F.a == "deps"))
@@ -397,7 +395,9 @@ async def dep_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang:
     if deposit is None or deposit["status"] != "pending":
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    await db.finish_deposit(deposit["id"], WALLET_DONE)
+    if not await db.claim_deposit(deposit["id"], WALLET_DONE):
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     await db.change_balance(deposit["user_id"], float(deposit["amount"]))
     await paint(call, t(lang, "admin_dep_ok"), settings=settings)
     try:
@@ -408,7 +408,6 @@ async def dep_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang:
         )
     except Exception:
         pass
-    await call.answer()
 
 
 @router.callback_query(AdminCB.filter(F.a == "dep_no"))
@@ -416,12 +415,13 @@ async def dep_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang:
     if not _admin(settings, call.from_user.id):
         return
     deposit = await db.get_deposit(callback_data.i)
-    if deposit is None:
+    if deposit is None or deposit["status"] != "pending":
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    await db.finish_deposit(deposit["id"], WALLET_REJECTED)
+    if not await db.claim_deposit(deposit["id"], WALLET_REJECTED):
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     await paint(call, t(lang, "admin_dep_no"), settings=settings)
-    await call.answer()
 
 
 @router.callback_query(AdminCB.filter(F.a == "wd_ok"))
@@ -432,9 +432,10 @@ async def wd_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: 
     if item is None or item["status"] != "pending":
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    await db.finish_withdraw(item["id"], WALLET_DONE)
+    if not await db.claim_withdraw(item["id"], WALLET_DONE):
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     await paint(call, t(lang, "admin_wd_ok"), settings=settings)
-    await call.answer()
 
 
 @router.callback_query(AdminCB.filter(F.a == "wd_no"))
@@ -445,10 +446,11 @@ async def wd_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: 
     if item is None or item["status"] != "pending":
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    await db.finish_withdraw(item["id"], WALLET_REJECTED)
+    if not await db.claim_withdraw(item["id"], WALLET_REJECTED):
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     await db.change_balance(item["user_id"], float(item["amount"]))
     await paint(call, t(lang, "admin_wd_no"), settings=settings)
-    await call.answer()
 
 
 @router.callback_query(AdminCB.filter(F.a == "home"))

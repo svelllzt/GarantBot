@@ -175,6 +175,9 @@ async def about(call: CallbackQuery, lang: str, settings: Settings, theme: Theme
 async def profile(call: CallbackQuery, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
     await state.clear()
     user = await db.get_user(call.from_user.id)
+    if user is None:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     await paint(
         call,
         profile_text(user, lang, settings.currency),
