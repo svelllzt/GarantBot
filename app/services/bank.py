@@ -117,6 +117,7 @@ class BankAccount:
             api_hash=self.settings.bank_api_hash,
             session_string=self.settings.bank_session,
             in_memory=True,
+            workers=4,
         )
         self.client.add_handler(RawUpdateHandler(self._on_raw))
         await self.client.start()
@@ -125,7 +126,7 @@ class BankAccount:
             fresh = await self.client.export_session_string()
         except Exception:
             fresh = ""
-        if fresh:
+        if fresh and fresh != self.settings.bank_session:
             try:
                 self.settings.patch("bank_session", fresh)
             except Exception:

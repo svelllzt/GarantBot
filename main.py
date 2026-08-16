@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from pathlib import Path
 
@@ -7,9 +6,11 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
+from app.buttons import Theme
 from app.config import get_settings
 from app.handlers import admin, deals, inventory, profile, start
-from app.middlewares import ContextMiddleware
+from app.middlewares import ContextMiddleware, install
+from app.pyro import run
 from app.services.bank import BankAccount
 from app.services.ton import TonEscrow
 from app.storage import Storage
@@ -30,13 +31,19 @@ async def main() -> None:
     bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     me = await bot.get_me()
     settings.bot_username = me.username or ""
-    dp = Dispatcher(storage=MemoryStorage())
     bank = BankAccount(settings, db, bot)
     ton = TonEscrow(settings)
     await ton.connect()
-
-    mw = ContextMiddleware(db, settings, bank, ton)
-    dp.update.middleware(mw)
+    dp = Dispatcher(
+        storage=MemoryStorage(),
+        db=db,
+        settings=settings,
+        bank=bank,
+        ton=ton,
+        lang="ru",
+        theme=Theme({}),
+    )
+    install(dp, ContextMiddleware(db, settings, bank, ton))
 
     dp.include_router(start.router)
     dp.include_router(profile.router)
@@ -56,4 +63,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run(main())

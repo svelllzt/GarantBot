@@ -43,12 +43,18 @@ async def cmd_start(
     command: CommandObject,
     state: FSMContext,
     db: Storage,
-    db_user,
-    lang: str,
-    theme: Theme,
     settings: Settings,
     ton,
+    db_user=None,
+    lang: str = "ru",
+    theme: Theme | None = None,
 ):
+    user = message.from_user
+    if db_user is None and user is not None:
+        db_user = await db.upsert_user(user.id, user.username, user.first_name or "")
+        lang = db_user["lang"] or "ru"
+    if theme is None:
+        theme = Theme(await db.button_map())
     payload = (command.args or "").strip()
     await state.clear()
     if payload:
@@ -58,7 +64,7 @@ async def cmd_start(
         await wipe.delete()
     except Exception:
         pass
-    if not db_user["lang"]:
+    if db_user is None or not db_user["lang"]:
         await message.answer(t("ru", "choose_lang"), reply_markup=lang_kb(theme))
         return
     await _after_start(message, state, db, lang, theme, settings, ton)

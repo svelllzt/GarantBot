@@ -1,6 +1,6 @@
 from typing import Any, Awaitable, Callable
 
-from aiogram import BaseMiddleware
+from aiogram import BaseMiddleware, Dispatcher
 from aiogram.types import CallbackQuery, Message, TelegramObject, Update
 
 from app.buttons import Theme
@@ -32,7 +32,8 @@ def _from_user(event: TelegramObject, data: dict[str, Any]):
         return user
     if isinstance(event, Update):
         return event.event_from_user
-    return getattr(event, "from_user", None)
+    inner = event.event if isinstance(event, Update) else event
+    return getattr(inner, "from_user", None) or getattr(event, "from_user", None)
 
 
 def _inner(event: TelegramObject):
@@ -59,10 +60,10 @@ class ContextMiddleware(BaseMiddleware):
         data["bank"] = self.bank
         data["ton"] = self.ton
         data.setdefault("lang", "ru")
+        data.setdefault("theme", Theme({}))
 
         user = _from_user(event, data)
         if user is None or getattr(user, "is_bot", False):
-            data.setdefault("theme", Theme({}))
             return await handler(event, data)
 
         row = await self.db.upsert_user(user.id, user.username, user.first_name or "")
@@ -89,3 +90,12 @@ class ContextMiddleware(BaseMiddleware):
             return None
 
         return await handler(event, data)
+
+
+def install(dp: Dispatcher, mw: ContextMiddleware) -> None:
+    dp.update.outer_middleware(mw)
+    dp.message.middleware(mw)
+    dp.callback_query.middleware(mw)
+    edited = getattr(dp, "edited_message", None)
+    if edited is not None:
+        edited.middleware(mw)

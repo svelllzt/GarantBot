@@ -2,21 +2,27 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from collections.abc import Coroutine
+from typing import Any
 
 
-def _ensure_loop() -> None:
+def ensure_loop() -> asyncio.AbstractEventLoop:
     try:
-        asyncio.get_running_loop()
-        return
+        return asyncio.get_running_loop()
     except RuntimeError:
         pass
     try:
-        asyncio.get_event_loop()
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError
+        return loop
     except RuntimeError:
-        asyncio.set_event_loop(asyncio.new_event_loop())
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
 
 
-_ensure_loop()
+ensure_loop()
 
 try:
     from pyrogram import Client
@@ -51,3 +57,7 @@ def ensure_pyrofork() -> None:
 
 
 ensure_pyrofork()
+
+
+def run(coro: Coroutine[Any, Any, Any]) -> Any:
+    return ensure_loop().run_until_complete(coro)

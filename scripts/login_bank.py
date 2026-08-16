@@ -1,5 +1,4 @@
 import argparse
-import asyncio
 import json
 import sys
 from pathlib import Path
@@ -9,7 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.config import get_settings
-from app.pyro import Client
+from app.pyro import Client, run
 
 
 def _help(path: Path) -> str:
@@ -178,7 +177,7 @@ def main() -> None:
             print(f"patched {settings.path} [bank] session")
             return
         if src.suffix.lower() == ".session":
-            session, username, user_id = asyncio.run(_export_from_file(settings, src))
+            session, username, user_id = run(_export_from_file(settings, src))
             _save(settings, session, username, user_id)
             return
         text = src.read_text(encoding="utf-8").strip()
@@ -195,7 +194,7 @@ def main() -> None:
     import pyrogram
 
     print(f"pyrofork {getattr(pyrogram, '__version__', '?')}")
-    session, username, user_id = asyncio.run(_login_user(settings))
+    session, username, user_id = run(_login_user(settings))
     _save(settings, session, username, user_id)
 
 
