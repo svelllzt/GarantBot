@@ -52,6 +52,8 @@ DEAL_FIELDS = {
     "title",
     "channel_msg_id",
     "buyer_id",
+    "dispute_reason",
+    "dispute_by",
 }
 WALLET_PENDING = "pending"
 WALLET_DONE = "done"
@@ -67,6 +69,7 @@ class Storage:
         self.path = path
         self.db: Optional[aiosqlite.Connection] = None
         self._buttons: Optional[dict[str, dict]] = None
+        self._screens: Optional[dict[str, str]] = None
 
     async def connect(self) -> None:
         self.db = await aiosqlite.connect(self.path)
@@ -96,6 +99,8 @@ class Storage:
                 bank_name TEXT,
                 ton_address TEXT,
                 banned INTEGER NOT NULL DEFAULT 0,
+                ban_reason TEXT,
+                banned_at INTEGER,
                 created_at INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
@@ -120,6 +125,8 @@ class Storage:
                 ton_received REAL,
                 rub_marked INTEGER NOT NULL DEFAULT 0,
                 payout_hash TEXT,
+                dispute_reason TEXT,
+                dispute_by INTEGER,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -179,6 +186,33 @@ class Storage:
                 style TEXT,
                 emoji_id TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS faq (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title_ru TEXT NOT NULL,
+                title_en TEXT,
+                body_ru TEXT NOT NULL,
+                body_en TEXT,
+                photo_id TEXT,
+                sort INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS screens (
+                key TEXT PRIMARY KEY,
+                file_id TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS dispute_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                deal_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                is_admin INTEGER NOT NULL DEFAULT 0,
+                text TEXT,
+                file_id TEXT,
+                created_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_disp_deal ON dispute_messages(deal_id, id);
             """
         )
         await self._migrate()
@@ -210,6 +244,8 @@ class Storage:
                 "bank_name": "TEXT",
                 "ton_address": "TEXT",
                 "banned": "INTEGER NOT NULL DEFAULT 0",
+                "ban_reason": "TEXT",
+                "banned_at": "INTEGER",
                 "created_at": "INTEGER NOT NULL DEFAULT 0",
             },
         )
@@ -227,6 +263,8 @@ class Storage:
                 "category": "TEXT NOT NULL DEFAULT 'goods'",
                 "title": "TEXT",
                 "channel_msg_id": "INTEGER",
+                "dispute_reason": "TEXT",
+                "dispute_by": "INTEGER",
             },
         )
         await self.db.execute(
@@ -283,8 +321,22 @@ class Storage:
         code = lang if lang in {"ru", "en"} else "ru"
         await self.execute("UPDATE users SET lang = ? WHERE user_id = ?", (code, user_id))
 
-    async def set_banned(self, user_id: int, banned: bool) -> None:
-        await self.execute("UPDATE users SET banned = ? WHERE user_id = ?", (int(banned), user_id))
+    async def set_banned(self, user_id: int, banned: bool, reason: str | None = None) -> None:
+        if banned:
+            await self.execute(
+                "UPDATE users SET banned = 1, ban_reason = ?, banned_at = ? WHERE user_id = ?",
+                ((reason or "").strip()[:500] or None, now(), user_id),
+            )
+            return
+        await self.execute(
+            "UPDATE users SET banned = 0, ban_reason = NULL, banned_at = NULL WHERE user_id = ?",
+            (user_id,),
+        )
+
+    async def banned_users(self) -> list[aiosqlite.Row]:
+        return await self.fetchall(
+            "SELECT * FROM users WHERE banned = 1 ORDER BY banned_at DESC, user_id DESC"
+        )
 
     async def set_requisite(self, user_id: int, field: str, value: Optional[str]) -> None:
         if field not in {"card", "phone", "bank_name", "ton_address"}:
@@ -323,17 +375,52 @@ class Storage:
         rows = await self.fetchall("SELECT user_id FROM users")
         return [r["user_id"] for r in rows]
 
-    async def stats(self) -> tuple[int, int, float]:
+    async def stats(self) -> dict[str, Any]:
         users = await self.fetchone("SELECT COUNT(*) AS c FROM users")
-        deals = await self.fetchone(
+        banned = await self.fetchone("SELECT COUNT(*) AS c FROM users WHERE banned = 1")
+        total = await self.fetchone("SELECT COUNT(*) AS c FROM deals")
+        closed = await self.fetchone(
             "SELECT COUNT(*) AS c FROM deals WHERE status = ?",
             (DEAL_CLOSED,),
         )
-        money = await self.fetchone(
+        volume = await self.fetchone(
             "SELECT COALESCE(SUM(amount), 0) AS s FROM deals WHERE status = ?",
             (DEAL_CLOSED,),
         )
-        return users["c"], deals["c"], float(money["s"])
+        escrow = await self.fetchone(
+            f"""
+            SELECT COALESCE(SUM(amount), 0) AS s FROM deals
+            WHERE status IN (?, ?, ?, ?)
+            """,
+            (DEAL_PAID, DEAL_FUNDED, DEAL_RUB_SENT, DEAL_DISPUTE),
+        )
+        by_status = await self.fetchall(
+            "SELECT status, COUNT(*) AS c FROM deals GROUP BY status"
+        )
+        by_cat = await self.fetchall(
+            "SELECT category, COUNT(*) AS c FROM deals GROUP BY category ORDER BY c DESC"
+        )
+        disputes = await self.fetchone(
+            "SELECT COUNT(*) AS c FROM deals WHERE status = ?",
+            (DEAL_DISPUTE,),
+        )
+        return {
+            "users": users["c"],
+            "banned": banned["c"],
+            "deals": total["c"],
+            "closed": closed["c"],
+            "volume": float(volume["s"]),
+            "escrow": float(escrow["s"]),
+            "disputes": disputes["c"],
+            "by_status": {row["status"]: row["c"] for row in by_status},
+            "by_cat": [(row["category"], row["c"]) for row in by_cat],
+        }
+
+    async def recent_deals(self, limit: int = 15) -> list[aiosqlite.Row]:
+        return await self.fetchall(
+            "SELECT * FROM deals ORDER BY id DESC LIMIT ?",
+            (limit,),
+        )
 
     async def create_deal(
         self,
@@ -598,3 +685,74 @@ class Storage:
     async def reset_button(self, key: str) -> None:
         await self.execute("DELETE FROM buttons WHERE key = ?", (key,))
         self._buttons = None
+
+    async def screen_map(self) -> dict[str, str]:
+        if self._screens is None:
+            rows = await self.fetchall("SELECT key, file_id FROM screens")
+            self._screens = {r["key"]: r["file_id"] for r in rows}
+        return self._screens
+
+    async def set_screen(self, key: str, file_id: str) -> None:
+        await self.execute(
+            """
+            INSERT INTO screens (key, file_id) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET file_id = excluded.file_id
+            """,
+            (key, file_id),
+        )
+        self._screens = None
+
+    async def clear_screen(self, key: str) -> None:
+        await self.execute("DELETE FROM screens WHERE key = ?", (key,))
+        self._screens = None
+
+    async def faq_all(self) -> list[aiosqlite.Row]:
+        return await self.fetchall("SELECT * FROM faq ORDER BY sort, id")
+
+    async def get_faq(self, faq_id: int) -> Optional[aiosqlite.Row]:
+        return await self.fetchone("SELECT * FROM faq WHERE id = ?", (faq_id,))
+
+    async def add_faq(self, title_ru: str, title_en: str, body_ru: str, body_en: str) -> int:
+        rows = await self.faq_all()
+        sort = (rows[-1]["sort"] + 1) if rows else 0
+        cur = await self.execute(
+            """
+            INSERT INTO faq (title_ru, title_en, body_ru, body_en, sort, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (title_ru[:120], title_en[:120], body_ru[:3500], body_en[:3500], sort, now()),
+        )
+        return cur.lastrowid
+
+    async def set_faq_photo(self, faq_id: int, photo_id: str | None) -> None:
+        await self.execute("UPDATE faq SET photo_id = ? WHERE id = ?", (photo_id, faq_id))
+
+    async def delete_faq(self, faq_id: int) -> None:
+        await self.execute("DELETE FROM faq WHERE id = ?", (faq_id,))
+
+    async def add_dispute_msg(
+        self,
+        deal_id: int,
+        user_id: int,
+        text: str | None = None,
+        file_id: str | None = None,
+        is_admin: bool = False,
+    ) -> int:
+        cur = await self.execute(
+            """
+            INSERT INTO dispute_messages (deal_id, user_id, is_admin, text, file_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (deal_id, user_id, int(is_admin), (text or "")[:3500] or None, file_id, now()),
+        )
+        return cur.lastrowid
+
+    async def dispute_messages(self, deal_id: int, limit: int = 40) -> list[aiosqlite.Row]:
+        return await self.fetchall(
+            """
+            SELECT * FROM (
+                SELECT * FROM dispute_messages WHERE deal_id = ? ORDER BY id DESC LIMIT ?
+            ) AS t ORDER BY t.id
+            """,
+            (deal_id, limit),
+        )

@@ -5,6 +5,7 @@ from pathlib import Path
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto, Message
 
+from app import ctx
 from app.config import ROOT
 
 EXTS = (".jpg", ".jpeg", ".png", ".webp")
@@ -12,6 +13,8 @@ SCREENS = (
     "menu",
     "profile",
     "deal",
+    "faq",
+    "support",
     "inventory",
     "about",
     "history",
@@ -43,9 +46,20 @@ def photo_path(screen: str | None, settings=None) -> Path | None:
     return None
 
 
-async def paint(event: Message | CallbackQuery, text: str, markup=None, screen: str | None = None, settings=None) -> None:
+def _media(screen: str | None, settings=None, text: str = ""):
+    if not screen or len(text) > 1024:
+        return None
+    file_id = (ctx.screen_ids.get() or {}).get(screen)
+    if file_id:
+        return file_id
     path = photo_path(screen, settings)
-    file = FSInputFile(path) if path and len(text) <= 1024 else None
+    if path:
+        return FSInputFile(path)
+    return None
+
+
+async def paint(event: Message | CallbackQuery, text: str, markup=None, screen: str | None = None, settings=None) -> None:
+    file = _media(screen, settings, text)
     if isinstance(event, CallbackQuery):
         msg = event.message
         if file is not None:
@@ -81,8 +95,8 @@ async def paint(event: Message | CallbackQuery, text: str, markup=None, screen: 
 
 
 async def send_screen(bot, chat_id: int, text: str, markup=None, screen: str | None = None, settings=None) -> None:
-    path = photo_path(screen, settings)
-    if path and len(text) <= 1024:
-        await bot.send_photo(chat_id, FSInputFile(path), caption=text, reply_markup=markup)
+    file = _media(screen, settings, text)
+    if file is not None:
+        await bot.send_photo(chat_id, file, caption=text, reply_markup=markup)
         return
     await bot.send_message(chat_id, text, reply_markup=markup)

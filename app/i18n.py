@@ -7,7 +7,9 @@ RU = {
     "need_username": "Укажите username в настройках Telegram, без него сделки недоступны.",
     "menu": "Главное меню",
     "btn_profile": "Профиль",
-    "btn_deal": "Сделка",
+    "btn_deal": "Начать сделку",
+    "btn_faq": "F.A.Q",
+    "btn_support": "Поддержка",
     "btn_inventory": "Инвентарь",
     "btn_history": "История",
     "btn_about": "О сервисе",
@@ -316,6 +318,7 @@ RU = {
     "deal_take": "Открыть сделку",
     "deal_manual_btn": "Памятка",
     "deal_ask_cat": "Категория сделки?",
+    "deal_ask_group": "Что продаёте или покупаете?",
     "deal_ask_title": "Короткое название объявления, как в канале. Например: Roblox 1200 Robux, почта отвязана.",
     "deal_list_ok": "Объявление #{id} в канале. Когда покупатель откроет сделку, обоим придёт памятка.",
     "deal_list_no_channel": "Канал не задан в config.ini [bot] deals_channel. Объявление всё равно в витрине бота.",
@@ -338,6 +341,61 @@ RU = {
     "channel_taken": "🔒 Сделку открыли, объявление снято.",
     "channel_closed": "🔒 Объявление снято.",
     "deal_taken_seller": "Покупатель @{username} открыл объявление #{id}. Смотрите памятку и ждите оплату.",
+    "faq_title": "F.A.Q",
+    "faq_empty": "Пока нет статей. Администратор добавит их в админке.",
+    "faq_missing": "Статья удалена.",
+    "support_text": "Напишите в поддержку: @{support}\n{chat}",
+    "deal_dispute_ask": "Опишите проблему одним сообщением. Можно сразу приложить фото.",
+    "deal_dispute_evidence_ask": "Пришлите текст или фото. Когда закончите — нажмите «Готово».",
+    "deal_dispute_thread": "Переписка",
+    "deal_dispute_evidence": "Доказательства",
+    "deal_dispute_done": "Готово",
+    "deal_dispute_empty": "Сообщений пока нет.",
+    "deal_dispute_msg": "<b>{who}</b>\n{text}",
+    "deal_dispute_photo": "📷 фото",
+    "deal_dispute_peer": "По сделке #{id} открыт спор.\n{reason}",
+    "deal_dispute_new": "Новое сообщение по спору #{id} от {who}:\n{text}",
+    "deal_dispute_closed": "Спор по сделке #{id} закрыт.",
+    "admin_faq": "F.A.Q",
+    "admin_screens": "Картинки меню",
+    "admin_bans": "Список банов",
+    "admin_faq_add": "Добавить статью",
+    "admin_faq_del": "Удалить",
+    "admin_faq_photo": "Фото статьи",
+    "admin_faq_empty": "Статей нет.",
+    "admin_faq_ask_title_ru": "Заголовок статьи на русском.",
+    "admin_faq_ask_title_en": "English title. «-» копирует русский.",
+    "admin_faq_ask_body_ru": "Текст статьи на русском. HTML можно.",
+    "admin_faq_ask_body_en": "English body. «-» копирует русский.",
+    "admin_faq_ask_photo": "Пришлите фото для статьи или «-», чтобы без картинки.",
+    "admin_faq_saved": "Статья сохранена.",
+    "admin_faq_deleted": "Статья удалена.",
+    "admin_screens_pick": "Экран, для которого поставить картинку. Дальше пришлите фото. «-» снимет картинку.",
+    "admin_screen_ask": "Фото для экрана {key}. «-» удаляет.",
+    "admin_screen_saved": "Картинка для {key} сохранена.",
+    "admin_screen_cleared": "Картинка {key} снята.",
+    "admin_bans_empty": "Заблокированных нет. Нажмите на человека в списке, чтобы разбанить.",
+    "admin_bans_line": "{name}\nID <code>{id}</code>\n{reason}",
+    "admin_ask_ban": "ID или @username. Потом причина бана.",
+    "admin_ask_ban_reason": "Причина бана. «-» без причины.",
+    "admin_banned": "Пользователь {id} заблокирован.",
+    "admin_unbanned": "Пользователь {id} разблокирован.",
+    "admin_ban_notice": "Вас заблокировали в боте.{reason}",
+    "admin_reply": "Ответить в спор",
+    "admin_ask_reply": "Сообщение в спор #{id}. Текст или фото.",
+    "admin_ask_verdict": "Комментарий к вердикту. «-» без комментария.",
+    "admin_stats_text": (
+        "Пользователей: {users} (бан {banned})\n"
+        "Сделок всего: {deals}\n"
+        "Закрыто: {closed}\n"
+        "Открытых споров: {disputes}\n"
+        "Оборот закрытых: {volume} {currency}\n"
+        "Сейчас в гаранте: {escrow} {currency}\n\n"
+        "По статусам:\n{by_status}\n\n"
+        "По категориям:\n{by_cat}\n\n"
+        "Последние:\n{recent}"
+    ),
+    "admin_deal_line": "#{id} · {status} · {cat} · {amount}",
 }
 
 EN = {
@@ -347,7 +405,9 @@ EN = {
     "need_username": "Set a Telegram username first. Deals are unavailable without it.",
     "menu": "Main menu",
     "btn_profile": "Profile",
-    "btn_deal": "Deal",
+    "btn_deal": "Start a deal",
+    "btn_faq": "F.A.Q",
+    "btn_support": "Support",
     "btn_inventory": "Inventory",
     "btn_history": "History",
     "btn_about": "About",
@@ -656,6 +716,7 @@ EN = {
     "deal_take": "Open this deal",
     "deal_manual_btn": "Memo",
     "deal_ask_cat": "Deal category?",
+    "deal_ask_group": "What are you selling or buying?",
     "deal_ask_title": "Short listing title for the channel. Example: Roblox 1200 Robux, email unlinked.",
     "deal_list_ok": "Listing #{id} is in the channel. When a buyer opens it, both of you get the memo.",
     "deal_list_no_channel": "No deals channel in config.ini [bot] deals_channel. The listing is still in the bot feed.",
@@ -678,6 +739,61 @@ EN = {
     "channel_taken": "🔒 This deal was taken.",
     "channel_closed": "🔒 Listing removed.",
     "deal_taken_seller": "Buyer @{username} opened listing #{id}. Read the memo and wait for payment.",
+    "faq_title": "F.A.Q",
+    "faq_empty": "No articles yet. An admin can add them in the admin panel.",
+    "faq_missing": "This article was removed.",
+    "support_text": "Contact support: @{support}\n{chat}",
+    "deal_dispute_ask": "Describe the problem in one message. You can attach a photo.",
+    "deal_dispute_evidence_ask": "Send text or a photo. Tap Done when you are finished.",
+    "deal_dispute_thread": "Thread",
+    "deal_dispute_evidence": "Evidence",
+    "deal_dispute_done": "Done",
+    "deal_dispute_empty": "No messages yet.",
+    "deal_dispute_msg": "<b>{who}</b>\n{text}",
+    "deal_dispute_photo": "📷 photo",
+    "deal_dispute_peer": "A dispute was opened on deal #{id}.\n{reason}",
+    "deal_dispute_new": "New dispute message on #{id} from {who}:\n{text}",
+    "deal_dispute_closed": "The dispute on deal #{id} is closed.",
+    "admin_faq": "F.A.Q",
+    "admin_screens": "Menu photos",
+    "admin_bans": "Ban list",
+    "admin_faq_add": "Add article",
+    "admin_faq_del": "Delete",
+    "admin_faq_photo": "Article photo",
+    "admin_faq_empty": "No articles.",
+    "admin_faq_ask_title_ru": "Russian title.",
+    "admin_faq_ask_title_en": "English title. “-” copies the Russian one.",
+    "admin_faq_ask_body_ru": "Russian body. HTML is allowed.",
+    "admin_faq_ask_body_en": "English body. “-” copies the Russian one.",
+    "admin_faq_ask_photo": "Send a photo for the article, or “-” for none.",
+    "admin_faq_saved": "Article saved.",
+    "admin_faq_deleted": "Article deleted.",
+    "admin_screens_pick": "Pick a screen, then send a photo. “-” removes it.",
+    "admin_screen_ask": "Photo for screen {key}. “-” removes it.",
+    "admin_screen_saved": "Photo for {key} saved.",
+    "admin_screen_cleared": "Photo for {key} removed.",
+    "admin_bans_empty": "Nobody is banned. Tap a user in the list to unban.",
+    "admin_bans_line": "{name}\nID <code>{id}</code>\n{reason}",
+    "admin_ask_ban": "ID or @username, then a ban reason.",
+    "admin_ask_ban_reason": "Ban reason. “-” for none.",
+    "admin_banned": "User {id} is banned.",
+    "admin_unbanned": "User {id} is unbanned.",
+    "admin_ban_notice": "You were banned from this bot.{reason}",
+    "admin_reply": "Reply in dispute",
+    "admin_ask_reply": "Message for dispute #{id}. Text or photo.",
+    "admin_ask_verdict": "Verdict comment. “-” to skip.",
+    "admin_stats_text": (
+        "Users: {users} (banned {banned})\n"
+        "Deals total: {deals}\n"
+        "Closed: {closed}\n"
+        "Open disputes: {disputes}\n"
+        "Closed volume: {volume} {currency}\n"
+        "In escrow now: {escrow} {currency}\n\n"
+        "By status:\n{by_status}\n\n"
+        "By category:\n{by_cat}\n\n"
+        "Recent:\n{recent}"
+    ),
+    "admin_deal_line": "#{id} · {status} · {cat} · {amount}",
 }
 
 LOCALES = {"ru": RU, "en": EN}

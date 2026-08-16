@@ -1,6 +1,6 @@
-Put images here. The bot picks them up automatically, no restart tricks needed beyond the next screen open.
+Put images here, or send them from /admin → Картинки меню.
 
-Names (jpg / jpeg / png / webp):
+Names (jpg / jpeg / png / webp), if you drop files instead of uploading in the bot:
 
   menu.jpg         main menu
   profile.jpg      profile
@@ -11,5 +11,8 @@ Names (jpg / jpeg / png / webp):
   history.jpg      history
   requisites.jpg   payout details
   deposit.jpg      deposit
+  faq.jpg          F.A.Q
+  support.jpg      support
 
-If a file is missing, that screen stays text-only.
+Admin photos in the bot override these files.
+If nothing is set, the screen stays text-only.

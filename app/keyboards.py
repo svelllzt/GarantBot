@@ -4,7 +4,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.buttons import KEYS, PAGE_SIZE, STYLES, Theme
 from app.i18n import t
-from app.storage import DEAL_FUNDED, DEAL_LISTED, DEAL_OPEN, DEAL_PAID, DEAL_PENDING, DEAL_REVIEW, DEAL_RUB_SENT, DEAL_WAIT_TON, Storage
+from app.storage import DEAL_DISPUTE, DEAL_FUNDED, DEAL_LISTED, DEAL_OPEN, DEAL_PAID, DEAL_PENDING, DEAL_REVIEW, DEAL_RUB_SENT, DEAL_WAIT_TON, Storage
+from app import ctx
 
 
 class LangCB(CallbackData, prefix="lang"):
@@ -35,6 +36,12 @@ class AdminCB(CallbackData, prefix="adm"):
     a: str
     i: int = 0
     x: int = 0
+    k: str = "-"
+
+
+class FaqCB(CallbackData, prefix="faq"):
+    a: str
+    i: int = 0
 
 
 class BtnCB(CallbackData, prefix="ub"):
@@ -51,17 +58,24 @@ async def home_kb(db: Storage, user_id: int, lang: str, theme: Theme) -> InlineK
 
 def main_menu(lang: str, theme: Theme, deal_id: int | None = None) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    theme.add(kb, "btn_profile", lang, callback_data=NavCB(a="profile").pack())
     theme.add(kb, "btn_deal", lang, callback_data=NavCB(a="deal").pack())
-    theme.add(kb, "btn_inventory", lang, callback_data=NavCB(a="inv").pack())
-    theme.add(kb, "btn_history", lang, callback_data=NavCB(a="hist").pack())
-    theme.add(kb, "btn_about", lang, callback_data=NavCB(a="about").pack())
-    theme.add(kb, "btn_feed", lang, callback_data=NavCB(a="feed").pack())
+    theme.add(kb, "btn_faq", lang, callback_data=NavCB(a="faq").pack())
+    theme.add(kb, "btn_profile", lang, callback_data=NavCB(a="profile").pack())
+    url = ctx.support_url.get() or ""
+    if url:
+        kb.button(
+            text=theme.text("btn_support", lang),
+            style=theme.style("btn_support"),
+            icon_custom_emoji_id=theme.emoji("btn_support"),
+            url=url,
+        )
+    else:
+        theme.add(kb, "btn_support", lang, callback_data=NavCB(a="support").pack())
+    rows = [1, 2, 1]
     if deal_id:
         theme.add(kb, "active_deal_btn", lang, callback_data=DealCB(a="open", i=deal_id).pack(), fmt={"id": deal_id})
-        kb.adjust(2, 2, 2, 1)
-    else:
-        kb.adjust(2, 2, 2)
+        rows.append(1)
+    kb.adjust(*rows)
     return kb.as_markup()
 
 
@@ -84,9 +98,12 @@ def profile_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
     theme.add(kb, "btn_req", lang, callback_data=NavCB(a="req").pack())
     theme.add(kb, "deposit", lang, callback_data=NavCB(a="dep").pack())
     theme.add(kb, "withdraw", lang, callback_data=NavCB(a="wd").pack())
+    theme.add(kb, "btn_inventory", lang, callback_data=NavCB(a="inv").pack())
+    theme.add(kb, "btn_history", lang, callback_data=NavCB(a="hist").pack())
     theme.add(kb, "change_lang", lang, callback_data=NavCB(a="lang").pack())
+    theme.add(kb, "btn_about", lang, callback_data=NavCB(a="about").pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
-    kb.adjust(1, 2, 1, 1)
+    kb.adjust(1, 2, 2, 1, 1, 1)
     return kb.as_markup()
 
 
@@ -109,26 +126,42 @@ def role_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def deal_mode_kb(lang: str, theme: Theme, channel_url: str = "") -> InlineKeyboardMarkup:
+def deal_mode_kb(lang: str, theme: Theme, channel_url: str = "", public: bool = True) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     theme.add(kb, "deal_private", lang, callback_data=DealCB(a="mode", x=0).pack())
-    theme.add(kb, "deal_public", lang, callback_data=DealCB(a="mode", x=1).pack())
+    if public:
+        theme.add(kb, "deal_public", lang, callback_data=DealCB(a="mode", x=1).pack())
     if channel_url:
         kb.button(text=t(lang, "deal_channel"), url=channel_url)
+    theme.add(kb, "btn_feed", lang, callback_data=NavCB(a="feed").pack())
+    theme.add(kb, "btn_back", lang, callback_data=NavCB(a="deal").pack())
+    theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def group_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
+    from app.catalog import GROUPS, group_label
+
+    kb = InlineKeyboardBuilder()
+    for key, _ in GROUPS:
+        kb.button(text=group_label(key, lang), callback_data=CatCB(k=f"g:{key}").pack())
     theme.add(kb, "btn_feed", lang, callback_data=NavCB(a="feed").pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
     kb.adjust(1)
     return kb.as_markup()
 
 
-def category_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
-    from app.catalog import CATS, label
+def category_kb(lang: str, theme: Theme, group: str | None = None) -> InlineKeyboardMarkup:
+    from app.catalog import CATS, group_cats, label
 
     kb = InlineKeyboardBuilder()
-    for key in CATS:
+    keys = group_cats(group) if group else CATS
+    for key in keys:
         kb.button(text=label(key, lang), callback_data=CatCB(k=key).pack())
+    theme.add(kb, "btn_back", lang, callback_data=NavCB(a="deal").pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
-    kb.adjust(2)
+    kb.adjust(1)
     return kb.as_markup()
 
 
@@ -213,6 +246,9 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int) -> InlineKeyboardMarkup
         if not seller:
             theme.add(kb, "deal_confirm", lang, callback_data=DealCB(a="ok", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
+    if status == DEAL_DISPUTE:
+        theme.add(kb, "deal_dispute_thread", lang, callback_data=DealCB(a="disth", i=deal["id"]).pack())
+        theme.add(kb, "deal_dispute_evidence", lang, callback_data=DealCB(a="disev", i=deal["id"]).pack())
     if status == DEAL_REVIEW and not seller:
         theme.add(kb, "deal_review_skip", lang, callback_data=DealCB(a="skip", i=deal["id"]).pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
@@ -281,8 +317,11 @@ def admin_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
     theme.add(kb, "admin_disputes", lang, callback_data=AdminCB(a="disp").pack())
     theme.add(kb, "admin_deposits", lang, callback_data=AdminCB(a="deps").pack())
     theme.add(kb, "admin_withdraws", lang, callback_data=AdminCB(a="wds").pack())
+    theme.add(kb, "admin_bans", lang, callback_data=AdminCB(a="bans").pack())
     theme.add(kb, "admin_ban", lang, callback_data=AdminCB(a="ban").pack())
     theme.add(kb, "admin_unban", lang, callback_data=AdminCB(a="unban").pack())
+    theme.add(kb, "admin_faq", lang, callback_data=AdminCB(a="faq").pack())
+    theme.add(kb, "admin_screens", lang, callback_data=AdminCB(a="scr").pack())
     theme.add(kb, "admin_balance", lang, callback_data=AdminCB(a="bal").pack())
     theme.add(kb, "admin_mail", lang, callback_data=AdminCB(a="mail").pack())
     theme.add(kb, "admin_buttons", lang, callback_data=BtnCB(a="list", p=0).pack())
@@ -295,7 +334,79 @@ def dispute_admin_kb(lang: str, theme: Theme, deal_id: int) -> InlineKeyboardMar
     kb = InlineKeyboardBuilder()
     theme.add(kb, "admin_buyer", lang, callback_data=AdminCB(a="win_b", i=deal_id).pack())
     theme.add(kb, "admin_seller", lang, callback_data=AdminCB(a="win_s", i=deal_id).pack())
+    theme.add(kb, "admin_reply", lang, callback_data=AdminCB(a="disr", i=deal_id).pack())
+    theme.add(kb, "deal_dispute_thread", lang, callback_data=DealCB(a="disth", i=deal_id).pack())
+    theme.add(kb, "admin_ban", lang, callback_data=AdminCB(a="ban").pack())
+    kb.adjust(2, 1, 1, 1)
+    return kb.as_markup()
+
+
+def faq_user_kb(lang: str, theme: Theme, items) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    for item in items:
+        title = item["title_ru"] if lang == "ru" else (item["title_en"] or item["title_ru"])
+        kb.button(text=title[:60], callback_data=FaqCB(a="open", i=item["id"]).pack())
+    theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def faq_item_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    theme.add(kb, "btn_back", lang, callback_data=NavCB(a="faq").pack())
+    theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def faq_admin_kb(lang: str, theme: Theme, items) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    theme.add(kb, "admin_faq_add", lang, callback_data=AdminCB(a="faqadd").pack())
+    for item in items:
+        title = item["title_ru"] if lang == "ru" else (item["title_en"] or item["title_ru"])
+        kb.button(text=f"#{item['id']} {title[:40]}", callback_data=AdminCB(a="faqo", i=item["id"]).pack())
+    theme.add(kb, "btn_back", lang, callback_data=AdminCB(a="home").pack())
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def faq_admin_item_kb(lang: str, theme: Theme, faq_id: int) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    theme.add(kb, "admin_faq_photo", lang, callback_data=AdminCB(a="faqph", i=faq_id).pack())
+    theme.add(kb, "admin_faq_del", lang, callback_data=AdminCB(a="faqdel", i=faq_id).pack())
+    theme.add(kb, "btn_back", lang, callback_data=AdminCB(a="faq").pack())
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def screens_admin_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
+    from app.media import SCREENS
+
+    kb = InlineKeyboardBuilder()
+    for key in SCREENS:
+        kb.button(text=key, callback_data=AdminCB(a="scrset", k=key).pack())
+    theme.add(kb, "btn_back", lang, callback_data=AdminCB(a="home").pack())
     kb.adjust(2)
+    return kb.as_markup()
+
+
+def bans_kb(lang: str, theme: Theme, rows) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    for row in rows:
+        name = row["username"] or row["nick"] or str(row["user_id"])
+        kb.button(
+            text=f"{name} · {row['user_id']}",
+            callback_data=AdminCB(a="unbani", i=row["user_id"]).pack(),
+        )
+    theme.add(kb, "admin_ban", lang, callback_data=AdminCB(a="ban").pack())
+    theme.add(kb, "btn_back", lang, callback_data=AdminCB(a="home").pack())
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def evidence_kb(lang: str, theme: Theme, deal_id: int) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    theme.add(kb, "deal_dispute_done", lang, callback_data=DealCB(a="disdone", i=deal_id).pack())
     return kb.as_markup()
 
 

@@ -7,6 +7,23 @@ from app.buttons import Theme
 from app.config import Settings
 from app.i18n import t
 from app.storage import Storage
+from app import ctx
+
+
+def support_link(settings: Settings) -> str:
+    chat = (settings.support_chat or "").strip()
+    if chat.startswith("http"):
+        return chat
+    if chat.startswith("@"):
+        return f"https://t.me/{chat[1:]}"
+    if chat.lstrip("-").isdigit():
+        return ""
+    if chat:
+        return f"https://t.me/{chat.lstrip('@')}"
+    user = (settings.support_username or "").lstrip("@")
+    if user:
+        return f"https://t.me/{user}"
+    return ""
 
 
 class ContextMiddleware(BaseMiddleware):
@@ -36,9 +53,18 @@ class ContextMiddleware(BaseMiddleware):
         data["db_user"] = row
         data["lang"] = row["lang"] or "ru"
         data["theme"] = Theme(await self.db.button_map())
+        ctx.screen_ids.set(await self.db.screen_map())
+        ctx.support_url.set(support_link(self.settings))
 
         if row["banned"] and not self.settings.is_admin(user.id):
             text = t(data["lang"], "banned")
+            reason = ""
+            try:
+                reason = (row["ban_reason"] or "").strip()
+            except (KeyError, IndexError, TypeError):
+                reason = ""
+            if reason:
+                text = f"{text}\n{reason}"
             if isinstance(event, Message):
                 await event.answer(text)
             elif isinstance(event, CallbackQuery):

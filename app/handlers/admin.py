@@ -8,7 +8,23 @@ from aiogram.types import CallbackQuery, Message
 from app.buttons import KEYS, Theme
 from app.config import Settings
 from app.i18n import t
-from app.keyboards import AdminCB, BtnCB, admin_kb, button_edit_kb, button_style_kb, buttons_list_kb, cancel_kb, dispute_admin_kb, ticket_kb
+from app.keyboards import (
+    AdminCB,
+    BtnCB,
+    admin_kb,
+    bans_kb,
+    button_edit_kb,
+    button_style_kb,
+    buttons_list_kb,
+    cancel_kb,
+    dispute_admin_kb,
+    faq_admin_item_kb,
+    faq_admin_kb,
+    screens_admin_kb,
+    ticket_kb,
+)
+from app.catalog import label
+from app.media import SCREENS
 from app.services import deals as svc
 from app.services.deals import DealError
 from app.states import AdminFlow
@@ -35,12 +51,47 @@ async def stats(call: CallbackQuery, db: Storage, lang: str, settings: Settings,
     if not _admin(settings, call.from_user.id):
         await call.answer(t(lang, "admin_only"), show_alert=True)
         return
-    users, deals, volume = await db.stats()
-    await call.message.edit_text(
-        t(lang, "admin_stats_text", users=users, deals=deals, volume=f"{volume:.2f}", currency=settings.currency),
-        reply_markup=admin_kb(lang, theme),
+    info = await db.stats()
+    status_lines = []
+    for status, count in sorted(info["by_status"].items()):
+        status_lines.append(f"{t(lang, f'deal_status_{status}')}: {count}")
+    cat_lines = []
+    for cat, count in info["by_cat"]:
+        cat_lines.append(f"{label(cat, lang)}: {count}")
+    recent_rows = await db.recent_deals(12)
+    recent_lines = []
+    for deal in recent_rows:
+        amount = money(deal["amount"]) if deal["amount"] is not None else "—"
+        recent_lines.append(
+            t(
+                lang,
+                "admin_deal_line",
+                id=deal["id"],
+                status=t(lang, f"deal_status_{deal['status']}"),
+                cat=label(deal["category"] if "category" in deal.keys() else None, lang),
+                amount=amount,
+            )
+        )
+    await paint(
+        call,
+        t(
+            lang,
+            "admin_stats_text",
+            users=info["users"],
+            banned=info["banned"],
+            deals=info["deals"],
+            closed=info["closed"],
+            disputes=info["disputes"],
+            volume=f"{info['volume']:.2f}",
+            escrow=f"{info['escrow']:.2f}",
+            currency=settings.currency,
+            by_status="\n".join(status_lines) or "—",
+            by_cat="\n".join(cat_lines) or "—",
+            recent="\n".join(recent_lines) or "—",
+        ),
+        admin_kb(lang, theme),
+        settings=settings,
     )
-    await call.answer()
 
 
 @router.callback_query(AdminCB.filter(F.a == "ban"))
@@ -48,7 +99,7 @@ async def ask_ban(call: CallbackQuery, state: FSMContext, lang: str, settings: S
     if not _admin(settings, call.from_user.id):
         return
     await state.set_state(AdminFlow.ban_id)
-    await call.message.answer(t(lang, "admin_ask_id"), reply_markup=cancel_kb(lang, theme))
+    await call.message.answer(t(lang, "admin_ask_ban"), reply_markup=cancel_kb(lang, theme))
     await call.answer()
 
 
@@ -62,15 +113,41 @@ async def ask_unban(call: CallbackQuery, state: FSMContext, lang: str, settings:
 
 
 @router.message(AdminFlow.ban_id)
-async def do_ban(message: Message, state: FSMContext, db: Storage, lang: str):
+async def do_ban(message: Message, state: FSMContext, db: Storage, lang: str, theme: Theme):
     if is_cancel(message.text or ""):
         return
-    if not (message.text or "").isdigit():
-        await message.answer(t(lang, "req_bad"))
+    raw = (message.text or "").strip()
+    user = None
+    if raw.isdigit():
+        user = await db.get_user(int(raw))
+    else:
+        user = await db.get_user_by_username(raw)
+    if user is None:
+        await message.answer(t(lang, "admin_user_missing"))
         return
-    await db.set_banned(int(message.text), True)
+    await state.update_data(target_id=user["user_id"])
+    await state.set_state(AdminFlow.ban_reason)
+    await message.answer(t(lang, "admin_ask_ban_reason"), reply_markup=cancel_kb(lang, theme))
+
+
+@router.message(AdminFlow.ban_reason)
+async def do_ban_reason(message: Message, state: FSMContext, db: Storage, lang: str):
+    if is_cancel(message.text or ""):
+        return
+    reason = (message.text or "").strip()
+    if reason in {"-", "—"}:
+        reason = ""
+    data = await state.get_data()
+    uid = int(data["target_id"])
+    await db.set_banned(uid, True, reason or None)
     await state.clear()
-    await message.answer(t(lang, "admin_done"))
+    await message.answer(t(lang, "admin_banned", id=uid))
+    extra = f"\n{reason}" if reason else ""
+    try:
+        user = await db.get_user(uid)
+        await message.bot.send_message(uid, t((user["lang"] if user else None) or "ru", "admin_ban_notice", reason=extra))
+    except Exception:
+        pass
 
 
 @router.message(AdminFlow.unban_id)
@@ -81,8 +158,9 @@ async def do_unban(message: Message, state: FSMContext, db: Storage, lang: str):
         await message.answer(t(lang, "req_bad"))
         return
     await db.set_banned(int(message.text), False)
+    uid = int(message.text)
     await state.clear()
-    await message.answer(t(lang, "admin_done"))
+    await message.answer(t(lang, "admin_unbanned", id=uid))
 
 
 @router.callback_query(AdminCB.filter(F.a == "bal"))
@@ -163,6 +241,12 @@ async def disputes(call: CallbackQuery, db: Storage, lang: str, settings: Settin
     for deal in rows:
         buyer = await db.get_user(deal["buyer_id"])
         seller = await db.get_user(deal["seller_id"])
+        reason = ""
+        try:
+            reason = (deal["dispute_reason"] or "").strip()
+        except (KeyError, IndexError, TypeError):
+            reason = ""
+        extra = f"\n{reason}" if reason else ""
         await call.message.answer(
             t(
                 lang,
@@ -175,7 +259,8 @@ async def disputes(call: CallbackQuery, db: Storage, lang: str, settings: Settin
                 amount=money(deal["amount"]) if not is_ton_deal(deal) else f"{money_ton(deal['ton_amount'])} TON / {money(deal['rub_amount'])} ₽",
                 currency="" if is_ton_deal(deal) else settings.currency,
                 nft="—" if not deal["nft_id"] else str(deal["nft_id"]),
-            ),
+            )
+            + extra,
             reply_markup=dispute_admin_kb(lang, theme, deal["id"]),
         )
     await call.answer()
@@ -191,11 +276,19 @@ async def win_buyer(call: CallbackQuery, callback_data: AdminCB, db: Storage, la
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
     deal = await db.get_deal(callback_data.i)
+    await db.add_dispute_msg(deal["id"], call.from_user.id, t(lang, "admin_verdict_buyer"), is_admin=True)
     await call.message.edit_text(t(lang, "admin_verdict_buyer"))
     for uid in (deal["seller_id"], deal["buyer_id"]):
+        if not uid:
+            continue
         user = await db.get_user(uid)
+        if not user:
+            continue
         try:
-            await call.bot.send_message(uid, t(user["lang"] or "ru", "admin_verdict_buyer"))
+            await call.bot.send_message(
+                uid,
+                t(user["lang"] or "ru", "admin_verdict_buyer") + "\n" + t(user["lang"] or "ru", "deal_dispute_closed", id=deal["id"]),
+            )
         except Exception:
             pass
     await call.answer()
@@ -211,11 +304,19 @@ async def win_seller(call: CallbackQuery, callback_data: AdminCB, db: Storage, l
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
     deal = await db.get_deal(callback_data.i)
+    await db.add_dispute_msg(deal["id"], call.from_user.id, t(lang, "admin_verdict_seller"), is_admin=True)
     await call.message.edit_text(t(lang, "admin_verdict_seller"))
     for uid in (deal["seller_id"], deal["buyer_id"]):
+        if not uid:
+            continue
         user = await db.get_user(uid)
+        if not user:
+            continue
         try:
-            await call.bot.send_message(uid, t(user["lang"] or "ru", "admin_verdict_seller"))
+            await call.bot.send_message(
+                uid,
+                t(user["lang"] or "ru", "admin_verdict_seller") + "\n" + t(user["lang"] or "ru", "deal_dispute_closed", id=deal["id"]),
+            )
         except Exception:
             pass
     await call.answer()
@@ -490,3 +591,243 @@ async def btn_emoji_save(message: Message, state: FSMContext, db: Storage, lang:
         t(lang, "admin_btn_saved") + "\n\n" + _btn_card(lang, theme, key),
         reply_markup=button_edit_kb(lang, theme, key, data.get("btn_page", 0)),
     )
+
+
+@router.callback_query(AdminCB.filter(F.a == "bans"))
+async def bans_list(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        return
+    rows = await db.banned_users()
+    if not rows:
+        await paint(call, t(lang, "admin_bans_empty"), bans_kb(lang, theme, []), settings=settings)
+        return
+    lines = []
+    for row in rows:
+        lines.append(
+            t(
+                lang,
+                "admin_bans_line",
+                name=row["username"] or row["nick"] or "-",
+                id=row["user_id"],
+                reason=row["ban_reason"] or "—",
+            )
+        )
+    await paint(call, "\n\n".join(lines), bans_kb(lang, theme, rows), settings=settings)
+
+
+@router.callback_query(AdminCB.filter(F.a == "unbani"))
+async def unban_row(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        return
+    await db.set_banned(callback_data.i, False)
+    await call.answer(t(lang, "admin_unbanned", id=callback_data.i), show_alert=True)
+    rows = await db.banned_users()
+    await paint(call, t(lang, "admin_unbanned", id=callback_data.i), bans_kb(lang, theme, rows), settings=settings)
+
+
+@router.callback_query(AdminCB.filter(F.a == "faq"))
+async def faq_admin(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        return
+    items = await db.faq_all()
+    text = t(lang, "admin_faq") if items else t(lang, "admin_faq_empty")
+    await paint(call, text, faq_admin_kb(lang, theme, items), screen="faq", settings=settings)
+
+
+@router.callback_query(AdminCB.filter(F.a == "faqadd"))
+async def faq_add(call: CallbackQuery, state: FSMContext, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        return
+    await state.set_state(AdminFlow.faq_title_ru)
+    await call.message.answer(t(lang, "admin_faq_ask_title_ru"), reply_markup=cancel_kb(lang, theme))
+    await call.answer()
+
+
+@router.message(AdminFlow.faq_title_ru)
+async def faq_title_ru(message: Message, state: FSMContext, lang: str, theme: Theme):
+    if is_cancel(message.text or ""):
+        return
+    title = (message.text or "").strip()
+    if len(title) < 2:
+        await message.answer(t(lang, "req_bad"))
+        return
+    await state.update_data(title_ru=title[:120])
+    await state.set_state(AdminFlow.faq_title_en)
+    await message.answer(t(lang, "admin_faq_ask_title_en"), reply_markup=cancel_kb(lang, theme))
+
+
+@router.message(AdminFlow.faq_title_en)
+async def faq_title_en(message: Message, state: FSMContext, lang: str, theme: Theme):
+    if is_cancel(message.text or ""):
+        return
+    data = await state.get_data()
+    title = (message.text or "").strip()
+    if title in {"-", "—"}:
+        title = data["title_ru"]
+    await state.update_data(title_en=title[:120])
+    await state.set_state(AdminFlow.faq_body_ru)
+    await message.answer(t(lang, "admin_faq_ask_body_ru"), reply_markup=cancel_kb(lang, theme))
+
+
+@router.message(AdminFlow.faq_body_ru)
+async def faq_body_ru(message: Message, state: FSMContext, lang: str, theme: Theme):
+    if is_cancel(message.text or ""):
+        return
+    body = (message.html_text or message.text or "").strip()
+    if len(body) < 2:
+        await message.answer(t(lang, "req_bad"))
+        return
+    await state.update_data(body_ru=body[:3500])
+    await state.set_state(AdminFlow.faq_body_en)
+    await message.answer(t(lang, "admin_faq_ask_body_en"), reply_markup=cancel_kb(lang, theme))
+
+
+@router.message(AdminFlow.faq_body_en)
+async def faq_body_en(message: Message, state: FSMContext, lang: str, theme: Theme):
+    if is_cancel(message.text or ""):
+        return
+    data = await state.get_data()
+    body = (message.html_text or message.text or "").strip()
+    if body in {"-", "—"}:
+        body = data["body_ru"]
+    await state.update_data(body_en=body[:3500])
+    await state.set_state(AdminFlow.faq_photo)
+    await message.answer(t(lang, "admin_faq_ask_photo"), reply_markup=cancel_kb(lang, theme))
+
+
+@router.message(AdminFlow.faq_photo)
+async def faq_photo_save(message: Message, state: FSMContext, db: Storage, lang: str, theme: Theme):
+    if is_cancel(message.text or ""):
+        return
+    data = await state.get_data()
+    raw = (message.text or "").strip()
+    photo = message.photo[-1].file_id if message.photo else None
+    if not photo and raw not in {"-", "—"}:
+        await message.answer(t(lang, "req_bad"))
+        return
+    edit_id = data.get("faq_edit")
+    if edit_id:
+        await db.set_faq_photo(int(edit_id), photo)
+        await state.clear()
+        await message.answer(t(lang, "admin_faq_saved"), reply_markup=faq_admin_item_kb(lang, theme, int(edit_id)))
+        return
+    faq_id = await db.add_faq(data["title_ru"], data["title_en"], data["body_ru"], data["body_en"])
+    if photo:
+        await db.set_faq_photo(faq_id, photo)
+    await state.clear()
+    await message.answer(t(lang, "admin_faq_saved"), reply_markup=faq_admin_item_kb(lang, theme, faq_id))
+
+
+@router.callback_query(AdminCB.filter(F.a == "faqo"))
+async def faq_admin_open(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        return
+    item = await db.get_faq(callback_data.i)
+    if item is None:
+        await call.answer(t(lang, "faq_missing"), show_alert=True)
+        return
+    text = f"<b>{item['title_ru']}</b>\n\n{item['body_ru']}"
+    await paint(call, text, faq_admin_item_kb(lang, theme, item["id"]), screen="faq", settings=settings)
+
+
+@router.callback_query(AdminCB.filter(F.a == "faqdel"))
+async def faq_del(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        return
+    await db.delete_faq(callback_data.i)
+    items = await db.faq_all()
+    await paint(call, t(lang, "admin_faq_deleted"), faq_admin_kb(lang, theme, items), screen="faq", settings=settings)
+
+
+@router.callback_query(AdminCB.filter(F.a == "faqph"))
+async def faq_photo_ask(call: CallbackQuery, callback_data: AdminCB, state: FSMContext, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        return
+    await state.set_state(AdminFlow.faq_photo)
+    await state.update_data(faq_edit=callback_data.i)
+    await call.message.answer(t(lang, "admin_faq_ask_photo"), reply_markup=cancel_kb(lang, theme))
+    await call.answer()
+
+
+@router.callback_query(AdminCB.filter(F.a == "scr"))
+async def screens_admin(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        return
+    mapping = await db.screen_map()
+    lines = [t(lang, "admin_screens_pick"), ""]
+    for key in SCREENS:
+        mark = "✓" if mapping.get(key) else "—"
+        lines.append(f"{mark} {key}")
+    await paint(call, "\n".join(lines), screens_admin_kb(lang, theme), settings=settings)
+
+
+@router.callback_query(AdminCB.filter(F.a == "scrset"))
+async def screen_ask(call: CallbackQuery, callback_data: AdminCB, state: FSMContext, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        return
+    key = callback_data.k
+    if key not in SCREENS:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    await state.set_state(AdminFlow.screen_photo)
+    await state.update_data(screen_key=key)
+    await call.message.answer(t(lang, "admin_screen_ask", key=key), reply_markup=cancel_kb(lang, theme))
+    await call.answer()
+
+
+@router.message(AdminFlow.screen_photo)
+async def screen_save(message: Message, state: FSMContext, db: Storage, lang: str):
+    if is_cancel(message.text or ""):
+        return
+    data = await state.get_data()
+    key = data.get("screen_key")
+    if not key:
+        await state.clear()
+        return
+    raw = (message.text or "").strip()
+    if raw in {"-", "—"}:
+        await db.clear_screen(key)
+        await state.clear()
+        await message.answer(t(lang, "admin_screen_cleared", key=key))
+        return
+    if not message.photo:
+        await message.answer(t(lang, "req_bad"))
+        return
+    await db.set_screen(key, message.photo[-1].file_id)
+    await state.clear()
+    await message.answer(t(lang, "admin_screen_saved", key=key))
+
+
+@router.callback_query(AdminCB.filter(F.a == "disr"))
+async def dispute_reply_ask(call: CallbackQuery, callback_data: AdminCB, state: FSMContext, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        return
+    await state.set_state(AdminFlow.dispute_reply)
+    await state.update_data(deal_id=callback_data.i)
+    await call.message.answer(t(lang, "admin_ask_reply", id=callback_data.i), reply_markup=cancel_kb(lang, theme))
+    await call.answer()
+
+
+@router.message(AdminFlow.dispute_reply)
+async def dispute_reply(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
+    if is_cancel(message.text or ""):
+        return
+    data = await state.get_data()
+    deal_id = int(data.get("deal_id") or 0)
+    deal = await db.get_deal(deal_id)
+    if deal is None:
+        await state.clear()
+        await message.answer(t(lang, "error"))
+        return
+    caption = (message.caption or message.text or "").strip()
+    file_id = message.photo[-1].file_id if message.photo else None
+    if not caption and not file_id:
+        await message.answer(t(lang, "req_bad"))
+        return
+    await db.add_dispute_msg(deal_id, message.from_user.id, caption or None, file_id, is_admin=True)
+    await state.clear()
+    note = t(lang, "deal_dispute_new", id=deal_id, who=t(lang, "admin_menu"), text=caption or t(lang, "deal_dispute_photo"))
+    from app.handlers.deals import _push_dispute
+
+    await _push_dispute(message.bot, db, settings, deal, message.from_user.id, note, file_id)
+    await message.answer(t(lang, "admin_done"), reply_markup=dispute_admin_kb(lang, theme, deal_id))

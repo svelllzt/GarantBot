@@ -50,8 +50,27 @@ async def main() -> None:
         assert listed["buyer_id"] == 0
         feed = await db.listed_deals()
         assert feed and feed[0]["id"] == lid
+        await db.set_banned(1, True, "test")
+        banned = await db.banned_users()
+        assert banned and banned[0]["user_id"] == 1
+        assert banned[0]["ban_reason"] == "test"
+        await db.set_banned(1, False)
+        assert not await db.banned_users()
+        faq_id = await db.add_faq("Как оплатить", "How to pay", "С баланса", "From balance")
+        await db.set_faq_photo(faq_id, "file123")
+        item = await db.get_faq(faq_id)
+        assert item["title_ru"] == "Как оплатить"
+        assert item["photo_id"] == "file123"
+        await db.set_screen("menu", "AgPHOTO")
+        assert (await db.screen_map())["menu"] == "AgPHOTO"
+        await db.add_dispute_msg(lid, 2, "не отвязал почту", is_admin=False)
+        msgs = await db.dispute_messages(lid)
+        assert msgs and msgs[0]["text"] == "не отвязал почту"
+        info = await db.stats()
+        assert info["users"] >= 2
+        assert "deals" in info
         deal_cols = await db._columns("deals")
-        for name in ("category", "title", "channel_msg_id", "kind"):
+        for name in ("category", "title", "channel_msg_id", "kind", "dispute_reason", "dispute_by"):
             assert name in deal_cols, name
         await db.close()
         print("ok")

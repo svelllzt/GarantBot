@@ -8,7 +8,7 @@ from app.buttons import Theme
 from app.config import Settings
 from app.handlers.deals import present_start_deal
 from app.i18n import t
-from app.keyboards import LangCB, NavCB, home_kb, lang_kb, profile_kb
+from app.keyboards import LangCB, NavCB, FaqCB, faq_item_kb, faq_user_kb, home_kb, lang_kb, profile_kb
 from app.storage import Storage
 from app.util import is_cancel, paint, profile_text
 
@@ -83,6 +83,67 @@ async def nav_menu(call: CallbackQuery, state: FSMContext, db: Storage, lang: st
 async def cancel_fsm(event: Message | CallbackQuery, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings):
     await state.clear()
     await show_menu(event, db, lang, theme, t(lang, "cancelled"), settings=settings)
+
+
+@router.callback_query(NavCB.filter(F.a == "faq"))
+async def faq_list(call: CallbackQuery, db: Storage, lang: str, theme: Theme, settings: Settings):
+    items = await db.faq_all()
+    if not items:
+        kb = InlineKeyboardBuilder()
+        theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
+        await paint(call, t(lang, "faq_empty"), kb.as_markup(), screen="faq", settings=settings)
+        return
+    await paint(call, t(lang, "faq_title"), faq_user_kb(lang, theme, items), screen="faq", settings=settings)
+
+
+@router.callback_query(FaqCB.filter(F.a == "open"))
+async def faq_open(call: CallbackQuery, callback_data: FaqCB, db: Storage, lang: str, theme: Theme, settings: Settings):
+    item = await db.get_faq(callback_data.i)
+    if item is None:
+        await call.answer(t(lang, "faq_missing"), show_alert=True)
+        return
+    title = item["title_ru"] if lang == "ru" else (item["title_en"] or item["title_ru"])
+    body = item["body_ru"] if lang == "ru" else (item["body_en"] or item["body_ru"])
+    text = f"<b>{title}</b>\n\n{body}"
+    markup = faq_item_kb(lang, theme)
+    if item["photo_id"] and len(text) <= 1024:
+        msg = call.message
+        from aiogram.types import InputMediaPhoto
+        from aiogram.exceptions import TelegramBadRequest
+
+        try:
+            if msg.photo:
+                await msg.edit_media(InputMediaPhoto(media=item["photo_id"], caption=text), reply_markup=markup)
+            else:
+                await msg.delete()
+                await msg.answer_photo(item["photo_id"], caption=text, reply_markup=markup)
+        except TelegramBadRequest:
+            await msg.answer_photo(item["photo_id"], caption=text, reply_markup=markup)
+        try:
+            await call.answer()
+        except TelegramBadRequest:
+            pass
+        return
+    await paint(call, text, markup, screen="faq", settings=settings)
+
+
+@router.callback_query(NavCB.filter(F.a == "support"))
+async def support(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
+    kb = InlineKeyboardBuilder()
+    from app.middlewares import support_link
+
+    url = support_link(settings)
+    if url:
+        kb.button(text=t(lang, "btn_support"), url=url)
+    theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
+    kb.adjust(1)
+    await paint(
+        call,
+        t(lang, "support_text", support=settings.support_username.lstrip("@"), chat=settings.support_chat or ""),
+        kb.as_markup(),
+        screen="support",
+        settings=settings,
+    )
 
 
 @router.callback_query(NavCB.filter(F.a == "about"))

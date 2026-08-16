@@ -270,3 +270,36 @@ def needs_nft(category: str | None) -> bool:
 
 def listing_allowed(category: str | None) -> bool:
     return normalize(category) != "ton"
+
+
+GROUPS = (
+    ("acc", ("acc_rbx", "acc_stm", "acc_epic", "acc_dsc", "acc_tg", "acc_soc", "acc_game")),
+    ("crypto", ("ton",)),
+    ("nft", ("nft",)),
+    ("goods", ("goods",)),
+    ("other", ("other",)),
+)
+
+_GROUP_LABEL = {
+    "acc": {"ru": "Аккаунты", "en": "Accounts"},
+    "crypto": {"ru": "Крипта", "en": "Crypto"},
+    "nft": {"ru": "NFT-подарки", "en": "NFT gifts"},
+    "goods": {"ru": "Товар / услуга", "en": "Goods / service"},
+    "other": {"ru": "Другое", "en": "Other"},
+}
+
+
+def group_label(key: str, lang: str) -> str:
+    row = _GROUP_LABEL.get(key) or _GROUP_LABEL["other"]
+    return row.get(lang) or row["ru"]
+
+
+def group_cats(key: str) -> tuple[str, ...]:
+    for name, cats in GROUPS:
+        if name == key:
+            return cats
+    return ()
+
+
+def is_group(key: str | None) -> bool:
+    return any(name == key for name, _ in GROUPS)

@@ -6,8 +6,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from app.buttons import Theme
 from app.config import Settings
 from app.i18n import t
-from app.catalog import label, manual, needs_nft, normalize, payment_kind
+from app.catalog import group_cats, label, listing_allowed, manual, needs_nft, normalize, payment_kind
 from app.keyboards import (
+    AdminCB,
     CatCB,
     DealCB,
     NavCB,
@@ -16,6 +17,8 @@ from app.keyboards import (
     confirm_kb,
     deal_kb,
     deal_mode_kb,
+    evidence_kb,
+    group_kb,
     history_kb,
     home_kb,
     nft_pick_kb,
@@ -31,7 +34,7 @@ from app.services import channel as ch
 from app.services import deals as svc
 from app.services.deals import DealError
 from app.states import DealFlow
-from app.storage import DEAL_CANCELLED, DEAL_FUNDED, DEAL_LISTED, DEAL_OPEN, DEAL_PAID, DEAL_PENDING, DEAL_RUB_SENT, DEAL_WAIT_TON, KIND_TON_RUB, NFT_AVAILABLE, Storage
+from app.storage import DEAL_CANCELLED, DEAL_DISPUTE, DEAL_FUNDED, DEAL_LISTED, DEAL_OPEN, DEAL_PAID, DEAL_PENDING, DEAL_RUB_SENT, DEAL_WAIT_TON, KIND_TON_RUB, NFT_AVAILABLE, Storage
 from app.util import (
     history_line,
     is_cancel,
@@ -136,8 +139,8 @@ async def new_deal(call: CallbackQuery, state: FSMContext, db: Storage, lang: st
         return
     await paint(
         call,
-        t(lang, "deal_mode"),
-        deal_mode_kb(lang, theme, ch.public_url(settings)),
+        t(lang, "deal_ask_group"),
+        group_kb(lang, theme),
         screen="deal",
         settings=settings,
     )
@@ -147,24 +150,58 @@ async def new_deal(call: CallbackQuery, state: FSMContext, db: Storage, lang: st
 async def pick_mode(call: CallbackQuery, callback_data: DealCB, state: FSMContext, lang: str, theme: Theme, settings: Settings):
     listing = bool(callback_data.x)
     await state.update_data(listing=listing, as_buyer=not listing)
+    data = await state.get_data()
     if listing:
+        if data.get("category"):
+            await state.set_state(DealFlow.listing_title)
+            await call.message.answer(t(lang, "deal_ask_title"), reply_markup=cancel_kb(lang, theme))
+            await call.answer()
+            return
         await paint(call, t(lang, "deal_ask_cat"), category_kb(lang, theme), screen="deal", settings=settings)
         return
     await paint(call, t(lang, "deal_role"), role_kb(lang, theme), screen="deal", settings=settings)
 
 
 @router.callback_query(DealCB.filter(F.a == "role"))
-async def pick_role(call: CallbackQuery, callback_data: DealCB, state: FSMContext, lang: str, theme: Theme, settings: Settings):
+async def pick_role(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings):
     if not call.from_user.username:
         await call.answer(t(lang, "need_username"), show_alert=True)
         return
-    await state.update_data(as_buyer=bool(callback_data.x), listing=False)
+    as_buyer = bool(callback_data.x)
+    await state.update_data(as_buyer=as_buyer, listing=False)
+    data = await state.get_data()
+    category = data.get("category")
+    if category and payment_kind(category) == KIND_TON_RUB and not as_buyer:
+        user = await db.get_user(call.from_user.id)
+        if not has_rub_req(user):
+            await call.answer(t(lang, "deal_ton_no_req"), show_alert=True)
+            return
+        if not user or not user["ton_address"]:
+            await call.answer(t(lang, "deal_ton_no_refund"), show_alert=True)
+            return
+    if category:
+        await state.set_state(DealFlow.username)
+        await call.message.answer(t(lang, "deal_ask_user"), reply_markup=cancel_kb(lang, theme))
+        await call.answer()
+        return
     await paint(call, t(lang, "deal_ask_cat"), category_kb(lang, theme), screen="deal", settings=settings)
 
 
 @router.callback_query(CatCB.filter())
-async def pick_cat(call: CallbackQuery, callback_data: CatCB, state: FSMContext, db: Storage, lang: str, theme: Theme, ton):
-    category = normalize(callback_data.k)
+async def pick_cat(call: CallbackQuery, callback_data: CatCB, state: FSMContext, db: Storage, lang: str, theme: Theme, ton, settings: Settings):
+    raw = callback_data.k
+    if raw.startswith("g:"):
+        group = raw[2:]
+        cats = group_cats(group)
+        if len(cats) > 1:
+            await paint(call, t(lang, "deal_ask_cat"), category_kb(lang, theme, group), screen="deal", settings=settings)
+            return
+        if not cats:
+            await call.answer(t(lang, "error"), show_alert=True)
+            return
+        category = cats[0]
+    else:
+        category = normalize(raw)
     data = await state.get_data()
     listing = bool(data.get("listing"))
     kind = payment_kind(category)
@@ -175,7 +212,7 @@ async def pick_cat(call: CallbackQuery, callback_data: CatCB, state: FSMContext,
         if not ton.address:
             await call.answer(t(lang, "deal_ton_off"), show_alert=True)
             return
-        if not data.get("as_buyer"):
+        if not data.get("as_buyer") and data.get("listing") is False:
             user = await db.get_user(call.from_user.id)
             if not has_rub_req(user):
                 await call.answer(t(lang, "deal_ton_no_req"), show_alert=True)
@@ -184,14 +221,32 @@ async def pick_cat(call: CallbackQuery, callback_data: CatCB, state: FSMContext,
                 await call.answer(t(lang, "deal_ton_no_refund"), show_alert=True)
                 return
     await state.update_data(category=category, kind=kind)
-    if listing:
+    data = await state.get_data()
+    if data.get("listing"):
         await state.set_state(DealFlow.listing_title)
         await call.message.answer(t(lang, "deal_ask_title"), reply_markup=cancel_kb(lang, theme))
         await call.answer()
         return
-    await state.set_state(DealFlow.username)
-    await call.message.answer(t(lang, "deal_ask_user"), reply_markup=cancel_kb(lang, theme))
-    await call.answer()
+    if data.get("listing") is False and "as_buyer" in data:
+        if kind == KIND_TON_RUB and not data.get("as_buyer"):
+            user = await db.get_user(call.from_user.id)
+            if not has_rub_req(user):
+                await call.answer(t(lang, "deal_ton_no_req"), show_alert=True)
+                return
+            if not user or not user["ton_address"]:
+                await call.answer(t(lang, "deal_ton_no_refund"), show_alert=True)
+                return
+        await state.set_state(DealFlow.username)
+        await call.message.answer(t(lang, "deal_ask_user"), reply_markup=cancel_kb(lang, theme))
+        await call.answer()
+        return
+    await paint(
+        call,
+        t(lang, "deal_mode"),
+        deal_mode_kb(lang, theme, ch.public_url(settings), public=listing_allowed(category)),
+        screen="deal",
+        settings=settings,
+    )
 
 
 @router.message(DealFlow.username)
@@ -1003,39 +1058,171 @@ async def cancel_no(call: CallbackQuery, lang: str):
 
 
 @router.callback_query(DealCB.filter(F.a == "dis"))
-async def dispute(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme):
-    try:
-        await svc.open_dispute(db, callback_data.i, call.from_user.id)
-    except DealError as exc:
-        await call.answer(svc.err_text(lang, exc), show_alert=True)
-        return
+async def dispute(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme):
     deal = await db.get_deal(callback_data.i)
+    if deal is None:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    await state.set_state(DealFlow.dispute_reason)
+    await state.update_data(deal_id=deal["id"])
+    await call.message.answer(t(lang, "deal_dispute_ask"), reply_markup=cancel_kb(lang, theme))
+    await call.answer()
+
+
+async def _thread_text(db: Storage, deal_id: int, lang: str) -> str:
+    rows = await db.dispute_messages(deal_id)
+    if not rows:
+        return t(lang, "deal_dispute_empty")
+    chunks = []
+    for row in rows:
+        user = await db.get_user(row["user_id"]) if row["user_id"] else None
+        if row["is_admin"]:
+            who = t(lang, "admin_menu")
+        elif user:
+            who = "@" + username_of(user)
+        else:
+            who = str(row["user_id"])
+        body = h(row["text"]) if row["text"] else t(lang, "deal_dispute_photo")
+        chunks.append(t(lang, "deal_dispute_msg", who=who, text=body))
+    return "\n\n".join(chunks)[:3500]
+
+
+async def _push_dispute(bot, db: Storage, settings: Settings, deal, sender_id: int, text: str, file_id: str | None = None) -> None:
+    targets = {deal["seller_id"], deal["buyer_id"], *settings.admins}
+    targets.discard(sender_id)
+    targets.discard(0)
+    for uid in targets:
+        try:
+            if file_id:
+                await bot.send_photo(uid, file_id, caption=text[:1024])
+            else:
+                await bot.send_message(uid, text)
+        except Exception:
+            pass
+
+
+@router.message(DealFlow.dispute_reason)
+async def dispute_reason(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
+    if is_cancel(message.text or ""):
+        return
+    data = await state.get_data()
+    deal_id = int(data.get("deal_id") or 0)
+    caption = (message.caption or message.text or "").strip()
+    file_id = message.photo[-1].file_id if message.photo else None
+    if len(caption) < 2 and not file_id:
+        await message.answer(t(lang, "req_bad"))
+        return
+    try:
+        await svc.open_dispute(db, deal_id, message.from_user.id, caption)
+    except DealError as exc:
+        await message.answer(svc.err_text(lang, exc))
+        await state.clear()
+        return
+    await db.add_dispute_msg(deal_id, message.from_user.id, caption or None, file_id, is_admin=False)
+    await state.clear()
+    deal = await db.get_deal(deal_id)
     nft = await db.get_nft(deal["nft_id"]) if deal["nft_id"] else None
     buyer = await db.get_user(deal["buyer_id"])
     seller = await db.get_user(deal["seller_id"])
-    await call.answer(t(lang, "deal_dispute_ok"), show_alert=True)
-    text = t(
-        lang,
-        "deal_dispute_ok",
-    )
-    await call.message.answer(text)
+    await message.answer(t(lang, "deal_dispute_ok"))
+    peer_text = t(lang, "deal_dispute_peer", id=deal["id"], reason=h(caption) if caption else t(lang, "deal_dispute_photo"))
+    await _push_dispute(message.bot, db, settings, deal, message.from_user.id, peer_text, file_id)
     admin_text = t(
         "ru",
         "deal_dispute_admin",
         id=deal["id"],
-        buyer=username_of(buyer),
+        buyer=username_of(buyer) if buyer else "-",
         buyer_id=deal["buyer_id"],
-        seller=username_of(seller),
+        seller=username_of(seller) if seller else "-",
         seller_id=deal["seller_id"],
         amount=money(deal["amount"]) if not is_ton_deal(deal) else f"{money_ton(deal['ton_amount'])} TON / {money(deal['rub_amount'])} ₽",
         currency="" if is_ton_deal(deal) else settings.currency,
         nft=nft_title(nft) if nft else t("ru", "deal_nft_none"),
     )
+    if caption:
+        admin_text = admin_text + "\n\n" + caption
     for admin_id in settings.admins:
         try:
-            await call.bot.send_message(admin_id, admin_text, reply_markup=dispute_admin_kb("ru", theme, deal["id"]))
+            await message.bot.send_message(admin_id, admin_text, reply_markup=dispute_admin_kb("ru", theme, deal["id"]))
         except Exception:
             pass
+    await _show_deal(message.bot, db, deal, message.from_user.id, lang, settings, theme, message=message)
+
+
+@router.callback_query(DealCB.filter(F.a == "disev"))
+async def dispute_evidence_start(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings):
+    deal = await db.get_deal(callback_data.i)
+    if deal is None or deal["status"] != DEAL_DISPUTE:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    if call.from_user.id not in (deal["seller_id"], deal["buyer_id"]) and not settings.is_admin(call.from_user.id):
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    await state.set_state(DealFlow.dispute_evidence)
+    await state.update_data(deal_id=deal["id"])
+    await call.message.answer(t(lang, "deal_dispute_evidence_ask"), reply_markup=evidence_kb(lang, theme, deal["id"]))
+    await call.answer()
+
+
+@router.callback_query(DealCB.filter(F.a == "disdone"))
+async def dispute_evidence_done(call: CallbackQuery, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+    data = await state.get_data()
+    await state.clear()
+    deal = await db.get_deal(int(data.get("deal_id") or 0))
+    if deal:
+        await _show_deal(call.bot, db, deal, call.from_user.id, lang, settings, theme, event=call, ton=ton)
+        return
+    await call.answer()
+
+
+@router.message(DealFlow.dispute_evidence)
+async def dispute_evidence(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
+    if is_cancel(message.text or ""):
+        return
+    data = await state.get_data()
+    deal_id = int(data.get("deal_id") or 0)
+    deal = await db.get_deal(deal_id)
+    if deal is None or deal["status"] != DEAL_DISPUTE:
+        await state.clear()
+        await message.answer(t(lang, "error"))
+        return
+    caption = (message.caption or message.text or "").strip()
+    file_id = message.photo[-1].file_id if message.photo else None
+    if not caption and not file_id:
+        await message.answer(t(lang, "req_bad"))
+        return
+    is_admin = settings.is_admin(message.from_user.id)
+    await db.add_dispute_msg(deal_id, message.from_user.id, caption or None, file_id, is_admin=is_admin)
+    who = username_of(await db.get_user(message.from_user.id))
+    note = t(lang, "deal_dispute_new", id=deal_id, who=who, text=h(caption) if caption else t(lang, "deal_dispute_photo"))
+    await _push_dispute(message.bot, db, settings, deal, message.from_user.id, note, file_id)
+    await message.answer(t(lang, "deal_dispute_ok"), reply_markup=evidence_kb(lang, theme, deal_id))
+
+
+@router.callback_query(DealCB.filter(F.a == "disth"))
+async def dispute_thread(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme):
+    deal = await db.get_deal(callback_data.i)
+    if deal is None:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    text = await _thread_text(db, deal["id"], lang)
+    reason = ""
+    try:
+        reason = (deal["dispute_reason"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        reason = ""
+    if reason:
+        text = h(reason) + "\n\n" + text
+    kb = InlineKeyboardBuilder()
+    if deal["status"] == DEAL_DISPUTE:
+        theme.add(kb, "deal_dispute_evidence", lang, callback_data=DealCB(a="disev", i=deal["id"]).pack())
+        if settings.is_admin(call.from_user.id):
+            theme.add(kb, "admin_reply", lang, callback_data=AdminCB(a="disr", i=deal["id"]).pack())
+            theme.add(kb, "admin_buyer", lang, callback_data=AdminCB(a="win_b", i=deal["id"]).pack())
+            theme.add(kb, "admin_seller", lang, callback_data=AdminCB(a="win_s", i=deal["id"]).pack())
+    theme.add(kb, "btn_back", lang, callback_data=DealCB(a="open", i=deal["id"]).pack())
+    kb.adjust(1)
+    await paint(call, text, kb.as_markup(), screen="deal", settings=settings)
 
 
 @router.callback_query(DealCB.filter(F.a == "rev"))

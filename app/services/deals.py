@@ -358,16 +358,23 @@ async def cancel_mutual(db: Storage, deal_id: int, ton: TonEscrow | None = None)
     await db.touch_deal(deal_id, status=DEAL_CANCELLED)
 
 
-async def open_dispute(db: Storage, deal_id: int, user_id: int) -> None:
+async def open_dispute(db: Storage, deal_id: int, user_id: int, reason: str = "") -> None:
     deal = await db.get_deal(deal_id)
     if deal is None or user_id not in (deal["seller_id"], deal["buyer_id"]):
         raise DealError("error")
+    if deal["status"] == DEAL_DISPUTE:
+        return
     if is_ton_deal(deal):
         if deal["status"] not in {DEAL_FUNDED, DEAL_RUB_SENT}:
             raise DealError("error")
     elif deal["status"] != DEAL_PAID:
         raise DealError("error")
-    await db.touch_deal(deal_id, status=DEAL_DISPUTE)
+    await db.touch_deal(
+        deal_id,
+        status=DEAL_DISPUTE,
+        dispute_reason=(reason or "")[:1000],
+        dispute_by=user_id,
+    )
 
 
 async def verdict_buyer(db: Storage, deal_id: int, ton: TonEscrow | None = None) -> None:

@@ -23,10 +23,13 @@ class DealFlow(StatesGroup):
     buyer_ton = State()
     listing_title = State()
     listing_price = State()
+    dispute_reason = State()
+    dispute_evidence = State()
 
 
 class AdminFlow(StatesGroup):
     ban_id = State()
+    ban_reason = State()
     unban_id = State()
     balance_id = State()
     balance_amount = State()
@@ -34,3 +37,11 @@ class AdminFlow(StatesGroup):
     btn_name_ru = State()
     btn_name_en = State()
     btn_emoji = State()
+    faq_title_ru = State()
+    faq_title_en = State()
+    faq_body_ru = State()
+    faq_body_en = State()
+    faq_photo = State()
+    screen_photo = State()
+    dispute_reply = State()
+    verdict_note = State()
