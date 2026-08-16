@@ -190,8 +190,8 @@ async def pick_role(call: CallbackQuery, callback_data: DealCB, state: FSMContex
 @router.callback_query(CatCB.filter())
 async def pick_cat(call: CallbackQuery, callback_data: CatCB, state: FSMContext, db: Storage, lang: str, theme: Theme, ton, settings: Settings):
     raw = callback_data.k
-    if raw.startswith("g:"):
-        group = raw[2:]
+    if callback_data.g:
+        group = raw
         cats = group_cats(group)
         if len(cats) > 1:
             await paint(call, t(lang, "deal_ask_cat"), category_kb(lang, theme, group), screen="deal", settings=settings)
@@ -343,7 +343,7 @@ async def feed(call: CallbackQuery, db: Storage, lang: str, settings: Settings, 
                 seller=username_of(seller) if seller else "-",
             )
         )
-        kb.button(text=f"#{deal['id']} {title[:28]}", callback_data=DealCB(a="card", i=deal["id"]).pack())
+        kb.button(text=f"#{deal['id']} {title[:28]}", style="primary", callback_data=DealCB(a="card", i=deal["id"]).pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
     kb.adjust(1)
     await paint(call, "\n\n".join(lines), kb.as_markup(), screen="listing", settings=settings)

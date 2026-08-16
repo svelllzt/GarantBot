@@ -140,7 +140,11 @@ async def support(call: CallbackQuery, lang: str, settings: Settings, theme: The
 
     url = support_link(settings)
     if url:
-        kb.button(text=t(lang, "btn_support"), url=url)
+        kb.button(
+            text=theme.text("btn_support", lang),
+            style=theme.style("btn_support"),
+            url=url,
+        )
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
     kb.adjust(1)
     await paint(

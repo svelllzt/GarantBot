@@ -24,6 +24,7 @@ class DealCB(CallbackData, prefix="deal"):
 
 class CatCB(CallbackData, prefix="cat"):
     k: str = "goods"
+    g: int = 0
 
 
 class WalletCB(CallbackData, prefix="wal"):
@@ -132,7 +133,7 @@ def deal_mode_kb(lang: str, theme: Theme, channel_url: str = "", public: bool = 
     if public:
         theme.add(kb, "deal_public", lang, callback_data=DealCB(a="mode", x=1).pack())
     if channel_url:
-        kb.button(text=t(lang, "deal_channel"), url=channel_url)
+        kb.button(text=t(lang, "deal_channel"), style="primary", url=channel_url)
     theme.add(kb, "btn_feed", lang, callback_data=NavCB(a="feed").pack())
     theme.add(kb, "btn_back", lang, callback_data=NavCB(a="deal").pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
@@ -144,8 +145,13 @@ def group_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
     from app.catalog import GROUPS, group_label
 
     kb = InlineKeyboardBuilder()
+    styles = {"acc": "primary", "crypto": "primary", "nft": "success", "goods": "primary", "other": "primary"}
     for key, _ in GROUPS:
-        kb.button(text=group_label(key, lang), callback_data=CatCB(k=f"g:{key}").pack())
+        kb.button(
+            text=group_label(key, lang),
+            style=styles.get(key, "primary"),
+            callback_data=CatCB(k=key, g=1).pack(),
+        )
     theme.add(kb, "btn_feed", lang, callback_data=NavCB(a="feed").pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
     kb.adjust(1)
@@ -158,7 +164,8 @@ def category_kb(lang: str, theme: Theme, group: str | None = None) -> InlineKeyb
     kb = InlineKeyboardBuilder()
     keys = group_cats(group) if group else CATS
     for key in keys:
-        kb.button(text=label(key, lang), callback_data=CatCB(k=key).pack())
+        style = "success" if key in {"nft", "ton"} else "primary"
+        kb.button(text=label(key, lang), style=style, callback_data=CatCB(k=key, g=0).pack())
     theme.add(kb, "btn_back", lang, callback_data=NavCB(a="deal").pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
     kb.adjust(1)
@@ -279,7 +286,7 @@ def nft_pick_kb(lang: str, theme: Theme, deal_id: int, items) -> InlineKeyboardM
         label = item["title"]
         if item["num"]:
             label = f"{label} #{item['num']}"
-        kb.button(text=label[:60], callback_data=DealCB(a="nftset", i=deal_id, x=item["id"]).pack())
+        kb.button(text=label[:60], style="primary", callback_data=DealCB(a="nftset", i=deal_id, x=item["id"]).pack())
     theme.add(kb, "btn_back", lang, callback_data=DealCB(a="open", i=deal_id).pack())
     kb.adjust(1)
     return kb.as_markup()
@@ -346,7 +353,7 @@ def faq_user_kb(lang: str, theme: Theme, items) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for item in items:
         title = item["title_ru"] if lang == "ru" else (item["title_en"] or item["title_ru"])
-        kb.button(text=title[:60], callback_data=FaqCB(a="open", i=item["id"]).pack())
+        kb.button(text=title[:60], style="primary", callback_data=FaqCB(a="open", i=item["id"]).pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
     kb.adjust(1)
     return kb.as_markup()
@@ -365,7 +372,7 @@ def faq_admin_kb(lang: str, theme: Theme, items) -> InlineKeyboardMarkup:
     theme.add(kb, "admin_faq_add", lang, callback_data=AdminCB(a="faqadd").pack())
     for item in items:
         title = item["title_ru"] if lang == "ru" else (item["title_en"] or item["title_ru"])
-        kb.button(text=f"#{item['id']} {title[:40]}", callback_data=AdminCB(a="faqo", i=item["id"]).pack())
+        kb.button(text=f"#{item['id']} {title[:40]}", style="primary", callback_data=AdminCB(a="faqo", i=item["id"]).pack())
     theme.add(kb, "btn_back", lang, callback_data=AdminCB(a="home").pack())
     kb.adjust(1)
     return kb.as_markup()
@@ -385,7 +392,7 @@ def screens_admin_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
 
     kb = InlineKeyboardBuilder()
     for key in SCREENS:
-        kb.button(text=key, callback_data=AdminCB(a="scrset", k=key).pack())
+        kb.button(text=key, style="primary", callback_data=AdminCB(a="scrset", k=key).pack())
     theme.add(kb, "btn_back", lang, callback_data=AdminCB(a="home").pack())
     kb.adjust(2)
     return kb.as_markup()
@@ -397,6 +404,7 @@ def bans_kb(lang: str, theme: Theme, rows) -> InlineKeyboardMarkup:
         name = row["username"] or row["nick"] or str(row["user_id"])
         kb.button(
             text=f"{name} · {row['user_id']}",
+            style="danger",
             callback_data=AdminCB(a="unbani", i=row["user_id"]).pack(),
         )
     theme.add(kb, "admin_ban", lang, callback_data=AdminCB(a="ban").pack())
@@ -430,14 +438,14 @@ def buttons_list_kb(lang: str, theme: Theme, page: int) -> InlineKeyboardMarkup:
     start = page * PAGE_SIZE
     chunk = KEYS[start : start + PAGE_SIZE]
     for key in chunk:
-        kb.button(text=theme.text(key, lang, id=0), callback_data=BtnCB(a="open", k=key, p=page).pack())
+        kb.button(text=theme.text(key, lang, id=0), style=theme.style(key) or "primary", callback_data=BtnCB(a="open", k=key, p=page).pack())
     nav = []
     if page > 0:
         nav.append(("‹", BtnCB(a="list", p=page - 1).pack()))
     if start + PAGE_SIZE < len(KEYS):
         nav.append(("›", BtnCB(a="list", p=page + 1).pack()))
     for text, data in nav:
-        kb.button(text=text, callback_data=data)
+        kb.button(text=text, style="primary", callback_data=data)
     theme.add(kb, "btn_back", lang, callback_data=AdminCB(a="home").pack())
     kb.adjust(1)
     return kb.as_markup()
@@ -446,11 +454,11 @@ def buttons_list_kb(lang: str, theme: Theme, page: int) -> InlineKeyboardMarkup:
 def button_edit_kb(lang: str, theme: Theme, key: str, page: int) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     theme.add(kb, key, lang, callback_data=BtnCB(a="open", k=key, p=page).pack(), fmt={"id": 0})
-    kb.button(text=t(lang, "admin_btn_name"), callback_data=BtnCB(a="name", k=key, p=page).pack())
-    kb.button(text=t(lang, "admin_btn_color"), callback_data=BtnCB(a="color", k=key, p=page).pack())
-    kb.button(text=t(lang, "admin_btn_emoji"), callback_data=BtnCB(a="emoji", k=key, p=page).pack())
-    kb.button(text=t(lang, "admin_btn_reset"), callback_data=BtnCB(a="reset", k=key, p=page).pack())
-    kb.button(text=t(lang, "btn_back"), callback_data=BtnCB(a="list", p=page).pack())
+    kb.button(text=t(lang, "admin_btn_name"), style="primary", callback_data=BtnCB(a="name", k=key, p=page).pack())
+    kb.button(text=t(lang, "admin_btn_color"), style="primary", callback_data=BtnCB(a="color", k=key, p=page).pack())
+    kb.button(text=t(lang, "admin_btn_emoji"), style="primary", callback_data=BtnCB(a="emoji", k=key, p=page).pack())
+    kb.button(text=t(lang, "admin_btn_reset"), style="danger", callback_data=BtnCB(a="reset", k=key, p=page).pack())
+    kb.button(text=t(lang, "btn_back"), style="primary", callback_data=BtnCB(a="list", p=page).pack())
     kb.adjust(1, 2, 2, 1)
     return kb.as_markup()
 
@@ -468,7 +476,7 @@ def button_style_kb(lang: str, theme: Theme, key: str, page: int) -> InlineKeybo
             style=style,
             callback_data=BtnCB(a="setst", k=key, p=page, s=style).pack(),
         )
-    kb.button(text=t(lang, "admin_btn_style_none"), callback_data=BtnCB(a="setst", k=key, p=page, s="none").pack())
-    kb.button(text=t(lang, "btn_back"), callback_data=BtnCB(a="open", k=key, p=page).pack())
+    kb.button(text=t(lang, "admin_btn_style_none"), style="primary", callback_data=BtnCB(a="setst", k=key, p=page, s="none").pack())
+    kb.button(text=t(lang, "btn_back"), style="primary", callback_data=BtnCB(a="open", k=key, p=page).pack())
     kb.adjust(1)
     return kb.as_markup()

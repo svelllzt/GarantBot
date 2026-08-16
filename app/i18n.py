@@ -1,11 +1,16 @@
 from typing import Any
 
 RU = {
-    "choose_lang": "Выберите язык / Choose language",
-    "welcome": "Добро пожаловать, {name}.\nГарант удерживает оплату до подтверждения сделки.",
-    "banned": "Аккаунт заблокирован.",
-    "need_username": "Укажите username в настройках Telegram, без него сделки недоступны.",
-    "menu": "Главное меню",
+    "choose_lang": "🌐 <b>Язык / Language</b>\n\nВыберите язык интерфейса.",
+    "welcome": (
+        "🛡️ <b>ASTRO GARANT</b>\n"
+        "Привет, {name}!\n\n"
+        "Оплата на гаранте до подтверждения сделки.\n"
+        "Аккаунты · NFT · товар · TON"
+    ),
+    "banned": "🚫 Аккаунт заблокирован.",
+    "need_username": "⚠️ Укажите username в настройках Telegram — без него сделки недоступны.",
+    "menu": "🏠 <b>Главное меню</b>\n\nВыберите действие ниже.",
     "btn_profile": "Профиль",
     "btn_deal": "Начать сделку",
     "btn_faq": "F.A.Q",
@@ -20,68 +25,67 @@ RU = {
     "btn_back": "Назад",
     "btn_yes": "Да",
     "btn_no": "Нет",
-    "cancelled": "Отменено.",
-    "error": "Не получилось. Попробуйте ещё раз.",
+    "cancelled": "❌ Отменено.",
+    "error": "⚠️ Не получилось. Попробуйте ещё раз.",
     "profile": (
-        "<b>Профиль</b>\n\n"
-        "ID: <code>{id}</code>\n"
-        "Ник: {nick}\n"
-        "Username: @{username}\n"
-        "Сделок: {deals}\n"
-        "Баланс: <b>{balance} {currency}</b>\n\n"
-        "Карта: {card}\n"
-        "Телефон: {phone}\n"
-        "Банк: {bank}\n"
-        "TON: {ton}"
+        "👤 <b>Профиль</b>\n\n"
+        "🆔 ID: <code>{id}</code>\n"
+        "✨ Ник: <b>{nick}</b>\n"
+        "🔗 Username: @{username}\n"
+        "🤝 Сделок: <b>{deals}</b>\n"
+        "💰 Баланс: <b>{balance} {currency}</b>\n\n"
+        "💳 Карта: {card}\n"
+        "📱 Телефон: {phone}\n"
+        "🏦 Банк: {bank}\n"
+        "💎 TON: {ton}"
     ),
     "not_set": "не указан",
     "btn_req": "Реквизиты",
-    "req_menu": "Реквизиты для вывода. Их видите только вы и администратор.",
+    "req_menu": "💳 <b>Реквизиты для вывода</b>\n\nИх видите только вы и администратор.",
     "req_card": "Карта",
     "req_phone": "Телефон и банк",
     "req_ton": "TON-адрес",
     "req_bank_short": "Банк",
-    "req_ask_card": "Номер карты, только цифры.",
-    "req_ask_phone": "Номер телефона, например +79991234567.",
-    "req_ask_bank": "Название банка.",
-    "req_ask_ton": "TON-адрес (UQ… / EQ…).",
-    "req_saved": "Реквизиты сохранены.",
-    "req_bad": "Неверный формат.",
-    "lang_changed": "Язык обновлён.",
+    "req_ask_card": "💳 Номер карты, только цифры.",
+    "req_ask_phone": "📱 Номер телефона, например +79991234567.",
+    "req_ask_bank": "🏦 Название банка.",
+    "req_ask_ton": "💎 TON-адрес (UQ… / EQ…).",
+    "req_saved": "✅ Реквизиты сохранены.",
+    "req_bad": "⚠️ Неверный формат.",
+    "lang_changed": "✅ Язык обновлён.",
     "deposit": "Пополнение",
     "withdraw": "Вывод",
     "change_lang": "Язык",
-    "deposit_ask": "Сумма пополнения в {currency}. Минимум {min}.",
+    "deposit_ask": "⬇️ Сумма пополнения в <b>{currency}</b>. Минимум <b>{min}</b>.",
     "deposit_created": (
-        "Заявка #{id}\n"
-        "Сумма: <b>{amount} {currency}</b>\n"
-        "Комментарий: <code>{comment}</code>\n\n"
-        "{extra}\n"
-        "После перевода нажмите «Проверить» или дождитесь подтверждения администратора."
+        "⬇️ <b>Заявка #{id}</b>\n\n"
+        "💰 Сумма: <b>{amount} {currency}</b>\n"
+        "🔖 Комментарий: <code>{comment}</code>\n\n"
+        "{extra}\n\n"
+        "После перевода нажмите «Проверить» или дождитесь администратора."
     ),
     "deposit_ton": "Переведите на TON-адрес:\n<code>{address}</code>\nВ комментарии укажите код выше.",
     "deposit_manual": "Перевод подтверждает администратор. Напишите @{support}, если платёж уже ушёл.",
     "deposit_check": "Проверить",
-    "deposit_wait": "Платёж ещё не найден.",
-    "deposit_ok": "Баланс пополнен на {amount} {currency}.",
-    "withdraw_ask": "Сумма вывода в {currency}. Минимум {min}. Комиссия сервиса на вывод не берётся.",
-    "withdraw_method": "Куда вывести?",
-    "withdraw_no_req": "Сначала заполните реквизиты в профиле.",
-    "withdraw_ok": "Заявка на вывод #{id}: {amount} {currency} на {details}. Администратор обработает её вручную.",
-    "withdraw_low": "Недостаточно средств.",
-    "min_amount": "Минимум {min} {currency}.",
+    "deposit_wait": "⏳ Платёж ещё не найден.",
+    "deposit_ok": "✅ Баланс пополнен на <b>{amount} {currency}</b>.",
+    "withdraw_ask": "⬆️ Сумма вывода в <b>{currency}</b>. Минимум <b>{min}</b>. Комиссия на вывод не берётся.",
+    "withdraw_method": "⬆️ <b>Куда вывести?</b>",
+    "withdraw_no_req": "⚠️ Сначала заполните реквизиты в профиле.",
+    "withdraw_ok": "✅ Заявка на вывод #{id}: <b>{amount} {currency}</b> на {details}. Администратор обработает её вручную.",
+    "withdraw_low": "⚠️ Недостаточно средств.",
+    "min_amount": "⚠️ Минимум {min} {currency}.",
     "about": (
-        "Гарант для безопасных сделок: аккаунты, NFT-подарки, товар, TON.\n\n"
-        "Объявления можно выложить в канал. Покупатель пополняет баланс, "
-        "открывает сделку и получает памятку по категории (например, как "
-        "перепривязать Roblox, чтобы аккаунт не вернули).\n\n"
-        "Обычная сделка: оплата с баланса бота, деньги у гаранта до подтверждения.\n"
-        "TON → рубли: TON на кошелёк V4, рубли продавцу, потом автовыплата TON.\n\n"
-        "Комиссия: {commission}% с суммы сделки, удерживается с продавца.\n"
-        "Поддержка: @{support}\n"
+        "ℹ️ <b>О сервисе</b>\n\n"
+        "Безопасные сделки: аккаунты, NFT-подарки, товар, TON.\n\n"
+        "• Оплата с баланса — деньги у гаранта до подтверждения\n"
+        "• TON → рубли через кошелёк V4\n"
+        "• Памятка по категории при открытии сделки\n\n"
+        "💸 Комиссия: <b>{commission}%</b> с продавца\n"
+        "💬 Поддержка: @{support}\n"
         "{chat}"
     ),
-    "deal_role": "Кем вы будете в сделке?",
+    "deal_role": "🛡️ <b>Кем вы будете в сделке?</b>",
     "deal_buyer": "Покупатель",
     "deal_seller": "Продавец",
     "deal_kind": "Тип сделки?",
@@ -89,19 +93,19 @@ RU = {
     "deal_kind_ton": "TON → рубли",
     "deal_kind_label_goods": "товар / NFT",
     "deal_kind_label_ton": "TON → рубли",
-    "deal_ask_user": "Username второй стороны, без @.",
-    "deal_self": "С самим собой сделку открыть нельзя.",
-    "deal_missing": "Пользователь не запускал бота.",
-    "deal_busy_you": "У вас уже есть активная сделка #{id}.",
-    "deal_busy_them": "У этого пользователя уже есть активная сделка.",
+    "deal_ask_user": "👤 Username второй стороны, без @.",
+    "deal_self": "⚠️ С самим собой сделку открыть нельзя.",
+    "deal_missing": "⚠️ Пользователь не запускал бота.",
+    "deal_busy_you": "⚠️ У вас уже есть активная сделка #{id}.",
+    "deal_busy_them": "⚠️ У этого пользователя уже есть активная сделка.",
     "deal_preview": (
-        "Контрагент:\n"
-        "ID <code>{id}</code>\n"
-        "Ник: {nick}\n"
-        "@{username}\n"
-        "Сделок: {deals}\n"
-        "Роль: {role}\n"
-        "Тип: {kind}"
+        "👤 <b>Контрагент</b>\n\n"
+        "🆔 ID <code>{id}</code>\n"
+        "✨ Ник: {nick}\n"
+        "🔗 @{username}\n"
+        "🤝 Сделок: <b>{deals}</b>\n"
+        "🎭 Роль: {role}\n"
+        "📦 Тип: {kind}"
     ),
     "deal_send": "Отправить предложение",
     "deal_reviews": "Отзывы",
@@ -118,42 +122,42 @@ RU = {
     "deal_declined": "Предложение отклонено.",
     "deal_declined_peer": "Вторая сторона отклонила предложение.",
     "deal_opened": (
-        "Сделка #{id}\n"
-        "Категория: {cat}\n"
-        "{title}\n"
-        "Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
-        "Продавец: @{seller} (<code>{seller_id}</code>)\n"
-        "Сумма: {amount}\n"
-        "NFT: {nft}\n"
-        "Условия: {desc}\n"
-        "Статус: {status}"
+        "🛡️ <b>Сделка #{id}</b>\n"
+        "📂 {cat}\n"
+        "🏷 {title}\n\n"
+        "🛒 Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
+        "💼 Продавец: @{seller} (<code>{seller_id}</code>)\n"
+        "💰 Сумма: <b>{amount}</b>\n"
+        "🎁 NFT: {nft}\n"
+        "📝 Условия: {desc}\n"
+        "📌 Статус: <b>{status}</b>"
     ),
     "deal_opened_ton": (
-        "Сделка #{id} · TON → рубли\n"
-        "Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
-        "Продавец: @{seller} (<code>{seller_id}</code>)\n"
-        "TON: <b>{ton}</b>\n"
-        "Рубли: <b>{rub} ₽</b>\n"
-        "Адрес покупателя: <code>{buyer_ton}</code>\n"
-        "Эскроу V4: <code>{escrow}</code>\n"
-        "Комментарий: <code>{comment}</code>\n"
-        "Получено TON: {received}\n"
-        "Реквизиты продавца:\n{req}\n"
-        "Условия: {desc}\n"
-        "Выплата: <code>{payout}</code>\n"
-        "Статус: {status}"
+        "💎 <b>Сделка #{id}</b> · TON → рубли\n\n"
+        "🛒 Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
+        "💼 Продавец: @{seller} (<code>{seller_id}</code>)\n"
+        "🔹 TON: <b>{ton}</b>\n"
+        "🔹 Рубли: <b>{rub} ₽</b>\n"
+        "📥 Адрес покупателя: <code>{buyer_ton}</code>\n"
+        "🏦 Эскроу V4: <code>{escrow}</code>\n"
+        "🔖 Комментарий: <code>{comment}</code>\n"
+        "📥 Получено TON: {received}\n"
+        "💳 Реквизиты продавца:\n{req}\n"
+        "📝 Условия: {desc}\n"
+        "🔗 Выплата: <code>{payout}</code>\n"
+        "📌 Статус: <b>{status}</b>"
     ),
-    "deal_status_pending": "ожидает принятия",
-    "deal_status_open": "открыта",
-    "deal_status_wait_ton": "ждёт TON на эскроу",
-    "deal_status_funded": "TON на гаранте, ждут рубли",
-    "deal_status_rub_sent": "рубли отправлены, ждут подтверждения",
-    "deal_status_paid": "оплачена",
-    "deal_status_dispute": "спор",
-    "deal_status_review": "завершена, отзыв",
-    "deal_status_closed": "закрыта",
-    "deal_status_cancelled": "отменена",
-    "deal_status_listed": "в канале, ждёт покупателя",
+    "deal_status_pending": "⏳ ожидает принятия",
+    "deal_status_open": "🟢 открыта",
+    "deal_status_wait_ton": "⏳ ждёт TON на эскроу",
+    "deal_status_funded": "🔒 TON на гаранте, ждут рубли",
+    "deal_status_rub_sent": "💸 рубли отправлены, ждут подтверждения",
+    "deal_status_paid": "💳 оплачена",
+    "deal_status_dispute": "⚠️ спор",
+    "deal_status_review": "⭐ завершена, отзыв",
+    "deal_status_closed": "✅ закрыта",
+    "deal_status_cancelled": "❌ отменена",
+    "deal_status_listed": "📣 в канале, ждёт покупателя",
     "deal_set_price": "Указать сумму",
     "deal_set_nft": "Прикрепить NFT",
     "deal_set_desc": "Условия",
@@ -311,41 +315,56 @@ RU = {
         "Сумма: {amount} TON\n"
         "{extra}"
     ),
-    "btn_feed": "Витрина",
-    "deal_mode": "Как открыть сделку?",
+    "deal_mode": "🛡️ <b>Как открыть сделку?</b>",
     "deal_private": "С человеком (username)",
     "deal_public": "Выложить в канал",
-    "deal_channel": "Канал сделок",
+    "deal_channel": "📣 Канал сделок",
     "deal_take": "Открыть сделку",
     "deal_manual_btn": "Памятка",
-    "deal_ask_cat": "Категория сделки?",
-    "deal_ask_group": "Что продаёте или покупаете?",
-    "deal_ask_title": "Короткое название объявления, как в канале. Например: Roblox 1200 Robux, почта отвязана.",
-    "deal_list_ok": "Объявление #{id} в канале. Когда покупатель откроет сделку, обоим придёт памятка.",
-    "deal_list_no_channel": "Канал не задан в config.ini [bot] deals_channel. Объявление всё равно в витрине бота.",
-    "deal_list_ton": "TON → рубли только напрямую с человеком, не в канал.",
-    "deal_listed_taken": "Объявление уже сняли или закрыли.",
-    "deal_feed_empty": "Открытых объявлений нет.",
+    "deal_ask_cat": "📂 <b>Категория сделки</b>",
+    "deal_ask_group": "🛡️ <b>Что продаёте или покупаете?</b>",
+    "deal_ask_title": "🏷 Короткое название объявления, как в канале. Например: Roblox 1200 Robux, почта отвязана.",
+    "deal_list_ok": "✅ Объявление #{id} в канале. Когда покупатель откроет сделку, обоим придёт памятка.",
+    "deal_list_no_channel": "📣 Канал не задан в config.ini. Объявление всё равно в витрине бота.",
+    "deal_list_ton": "⚠️ TON → рубли только напрямую с человеком, не в канал.",
+    "deal_listed_taken": "⚠️ Объявление уже сняли или закрыли.",
+    "deal_feed_empty": "🛒 Открытых объявлений нет.",
     "deal_feed_line": "#{id} · {cat} · {amount}\n{title}\n@{seller}",
-    "deal_need_deposit": "Сначала пополните баланс в профиле, затем откройте сделку.",
-    "deal_need_price": "У объявления должна быть сумма больше нуля.",
-    "nft_need_gift": "Продавец ещё не прикрепил NFT к объявлению.",
+    "deal_need_deposit": "⬇️ Сначала пополните баланс в профиле, затем откройте сделку.",
+    "deal_need_price": "⚠️ У объявления должна быть сумма больше нуля.",
+    "nft_need_gift": "🎁 Продавец ещё не прикрепил NFT к объявлению.",
     "channel_listing": (
-        "<b>Сделка #{id}</b> · {cat}\n"
+        "🛡️ <b>Сделка #{id}</b> · {cat}\n"
         "{title}\n\n"
-        "Продавец: @{seller}\n"
-        "Цена: <b>{amount}</b>\n\n"
+        "💼 Продавец: @{seller}\n"
+        "💰 Цена: <b>{amount}</b>\n\n"
         "{desc}\n\n"
         "Оплата через бота-гаранта. Нажмите «Открыть в боте»."
     ),
-    "channel_open": "Открыть в боте",
+    "channel_open": "🛡️ Открыть в боте",
     "channel_taken": "🔒 Сделку открыли, объявление снято.",
     "channel_closed": "🔒 Объявление снято.",
-    "deal_taken_seller": "Покупатель @{username} открыл объявление #{id}. Смотрите памятку и ждите оплату.",
-    "faq_title": "F.A.Q",
-    "faq_empty": "Пока нет статей. Администратор добавит их в админке.",
-    "faq_missing": "Статья удалена.",
-    "support_text": "Напишите в поддержку: @{support}\n{chat}",
+    "deal_taken_seller": "🛒 Покупатель @{username} открыл объявление #{id}. Смотрите памятку и ждите оплату.",
+    "faq_title": "❓ <b>F.A.Q</b>\n\nОтветы на частые вопросы.",
+    "faq_empty": "❓ Пока нет статей. Администратор добавит их в админке.",
+    "faq_missing": "⚠️ Статья удалена.",
+    "support_text": "💬 <b>Поддержка</b>\n\nНапишите нам: @{support}\n{chat}",
+    "history_empty": "📜 История пуста.",
+    "history_role": "📜 <b>История сделок</b>\n\nПоказать сделки, где вы…",
+    "history_line": "#{id} · {role} · {amount} · {status}\nКонтрагент: @{peer}",
+    "inv_empty": "🎁 Инвентарь пуст.",
+    "inv_how": (
+        "🎁 <b>Инвентарь NFT</b>\n\n"
+        "Отправьте уникальный подарок на банк: <b>{bank}</b>\n"
+        "Он появится здесь и привяжется к вашему Telegram ID."
+    ),
+    "inv_item": "🎁 <b>{title}</b>\nСтатус: {status}\nID: {id}",
+    "inv_status_available": "✅ доступен",
+    "inv_status_locked": "🔒 в сделке",
+    "inv_status_transferred": "📤 передан",
+    "inv_new": "🎁 В инвентарь добавлен подарок: <b>{title}</b>",
+    "admin_menu": "🎛 <b>Админка</b>",
+    "btn_feed": "Витрина",
     "deal_dispute_ask": "Опишите проблему одним сообщением. Можно сразу приложить фото.",
     "deal_dispute_evidence_ask": "Пришлите текст или фото. Когда закончите — нажмите «Готово».",
     "deal_dispute_thread": "Переписка",
@@ -412,11 +431,16 @@ RU = {
 }
 
 EN = {
-    "choose_lang": "Choose language / Выберите язык",
-    "welcome": "Welcome, {name}.\nThe escrow holds payment until the deal is confirmed.",
-    "banned": "This account is banned.",
-    "need_username": "Set a Telegram username first. Deals are unavailable without it.",
-    "menu": "Main menu",
+    "choose_lang": "🌐 <b>Language / Язык</b>\n\nChoose the interface language.",
+    "welcome": (
+        "🛡️ <b>ASTRO GARANT</b>\n"
+        "Hey, {name}!\n\n"
+        "Funds stay in escrow until the deal is confirmed.\n"
+        "Accounts · NFT · goods · TON"
+    ),
+    "banned": "🚫 This account is banned.",
+    "need_username": "⚠️ Set a Telegram username first. Deals are unavailable without it.",
+    "menu": "🏠 <b>Main menu</b>\n\nPick an action below.",
     "btn_profile": "Profile",
     "btn_deal": "Start a deal",
     "btn_faq": "F.A.Q",
@@ -431,68 +455,67 @@ EN = {
     "btn_back": "Back",
     "btn_yes": "Yes",
     "btn_no": "No",
-    "cancelled": "Cancelled.",
-    "error": "Something went wrong. Try again.",
+    "cancelled": "❌ Cancelled.",
+    "error": "⚠️ Something went wrong. Try again.",
     "profile": (
-        "<b>Profile</b>\n\n"
-        "ID: <code>{id}</code>\n"
-        "Nick: {nick}\n"
-        "Username: @{username}\n"
-        "Deals: {deals}\n"
-        "Balance: <b>{balance} {currency}</b>\n\n"
-        "Card: {card}\n"
-        "Phone: {phone}\n"
-        "Bank: {bank}\n"
-        "TON: {ton}"
+        "👤 <b>Profile</b>\n\n"
+        "🆔 ID: <code>{id}</code>\n"
+        "✨ Nick: <b>{nick}</b>\n"
+        "🔗 Username: @{username}\n"
+        "🤝 Deals: <b>{deals}</b>\n"
+        "💰 Balance: <b>{balance} {currency}</b>\n\n"
+        "💳 Card: {card}\n"
+        "📱 Phone: {phone}\n"
+        "🏦 Bank: {bank}\n"
+        "💎 TON: {ton}"
     ),
     "not_set": "not set",
     "btn_req": "Payout details",
-    "req_menu": "Payout details. Visible only to you and the admin.",
+    "req_menu": "💳 <b>Payout details</b>\n\nVisible only to you and the admin.",
     "req_card": "Card",
     "req_phone": "Phone and bank",
     "req_ton": "TON address",
     "req_bank_short": "Bank",
-    "req_ask_card": "Card number, digits only.",
-    "req_ask_phone": "Phone number, e.g. +19995550100.",
-    "req_ask_bank": "Bank name.",
-    "req_ask_ton": "TON address (UQ… / EQ…).",
-    "req_saved": "Details saved.",
-    "req_bad": "Invalid format.",
-    "lang_changed": "Language updated.",
+    "req_ask_card": "💳 Card number, digits only.",
+    "req_ask_phone": "📱 Phone number, e.g. +19995550100.",
+    "req_ask_bank": "🏦 Bank name.",
+    "req_ask_ton": "💎 TON address (UQ… / EQ…).",
+    "req_saved": "✅ Details saved.",
+    "req_bad": "⚠️ Invalid format.",
+    "lang_changed": "✅ Language updated.",
     "deposit": "Deposit",
     "withdraw": "Withdraw",
     "change_lang": "Language",
-    "deposit_ask": "Deposit amount in {currency}. Minimum {min}.",
+    "deposit_ask": "⬇️ Deposit amount in <b>{currency}</b>. Minimum <b>{min}</b>.",
     "deposit_created": (
-        "Request #{id}\n"
-        "Amount: <b>{amount} {currency}</b>\n"
-        "Memo: <code>{comment}</code>\n\n"
-        "{extra}\n"
-        "After sending, tap Check or wait for an admin confirmation."
+        "⬇️ <b>Request #{id}</b>\n\n"
+        "💰 Amount: <b>{amount} {currency}</b>\n"
+        "🔖 Memo: <code>{comment}</code>\n\n"
+        "{extra}\n\n"
+        "After sending, tap Check or wait for an admin."
     ),
     "deposit_ton": "Send TON to:\n<code>{address}</code>\nUse the memo above as the comment.",
     "deposit_manual": "An admin confirms the transfer. Message @{support} if it is already sent.",
     "deposit_check": "Check",
-    "deposit_wait": "Payment not found yet.",
-    "deposit_ok": "Balance credited with {amount} {currency}.",
-    "withdraw_ask": "Withdrawal amount in {currency}. Minimum {min}. No extra fee on payout.",
-    "withdraw_method": "Where should we send it?",
-    "withdraw_no_req": "Fill in payout details in your profile first.",
-    "withdraw_ok": "Withdrawal #{id}: {amount} {currency} to {details}. An admin will process it.",
-    "withdraw_low": "Insufficient balance.",
-    "min_amount": "Minimum {min} {currency}.",
+    "deposit_wait": "⏳ Payment not found yet.",
+    "deposit_ok": "✅ Balance credited with <b>{amount} {currency}</b>.",
+    "withdraw_ask": "⬆️ Withdrawal amount in <b>{currency}</b>. Minimum <b>{min}</b>. No extra fee on payout.",
+    "withdraw_method": "⬆️ <b>Where should we send it?</b>",
+    "withdraw_no_req": "⚠️ Fill in payout details in your profile first.",
+    "withdraw_ok": "✅ Withdrawal #{id}: <b>{amount} {currency}</b> to {details}. An admin will process it.",
+    "withdraw_low": "⚠️ Insufficient balance.",
+    "min_amount": "⚠️ Minimum {min} {currency}.",
     "about": (
-        "Escrow for peer-to-peer deals.\n\n"
-        "Regular deal: the buyer funds the bot balance, the seller delivers goods or an NFT. "
-        "Funds are released after confirmation.\n\n"
-        "TON → RUB: the seller deposits TON into the escrow Wallet V4. The buyer pays rubles "
-        "to the seller's payout details. After the seller confirms the rubles, the bot sends "
-        "TON to the buyer's address automatically.\n\n"
-        "Fee: {commission}% of the deal, taken from the seller.\n"
-        "Support: @{support}\n"
+        "ℹ️ <b>About</b>\n\n"
+        "Safe P2P deals: accounts, NFT gifts, goods, TON.\n\n"
+        "• Pay from balance — funds stay in escrow until confirm\n"
+        "• TON → RUB via Wallet V4\n"
+        "• Category memo when a deal opens\n\n"
+        "💸 Fee: <b>{commission}%</b> from the seller\n"
+        "💬 Support: @{support}\n"
         "{chat}"
     ),
-    "deal_role": "Your role in this deal?",
+    "deal_role": "🛡️ <b>Your role in this deal?</b>",
     "deal_buyer": "Buyer",
     "deal_seller": "Seller",
     "deal_kind": "Deal type?",
@@ -500,19 +523,19 @@ EN = {
     "deal_kind_ton": "TON → RUB",
     "deal_kind_label_goods": "goods / NFT",
     "deal_kind_label_ton": "TON → RUB",
-    "deal_ask_user": "Counterparty username, without @.",
-    "deal_self": "You cannot open a deal with yourself.",
-    "deal_missing": "This user has never started the bot.",
-    "deal_busy_you": "You already have an active deal #{id}.",
-    "deal_busy_them": "That user already has an active deal.",
+    "deal_ask_user": "👤 Counterparty username, without @.",
+    "deal_self": "⚠️ You cannot open a deal with yourself.",
+    "deal_missing": "⚠️ This user has never started the bot.",
+    "deal_busy_you": "⚠️ You already have an active deal #{id}.",
+    "deal_busy_them": "⚠️ That user already has an active deal.",
     "deal_preview": (
-        "Counterparty:\n"
-        "ID <code>{id}</code>\n"
-        "Nick: {nick}\n"
-        "@{username}\n"
-        "Deals: {deals}\n"
-        "Your role: {role}\n"
-        "Type: {kind}"
+        "👤 <b>Counterparty</b>\n\n"
+        "🆔 ID <code>{id}</code>\n"
+        "✨ Nick: {nick}\n"
+        "🔗 @{username}\n"
+        "🤝 Deals: <b>{deals}</b>\n"
+        "🎭 Your role: {role}\n"
+        "📦 Type: {kind}"
     ),
     "deal_send": "Send offer",
     "deal_reviews": "Reviews",
@@ -529,42 +552,42 @@ EN = {
     "deal_declined": "Offer declined.",
     "deal_declined_peer": "The other party declined the offer.",
     "deal_opened": (
-        "Deal #{id}\n"
-        "Category: {cat}\n"
-        "{title}\n"
-        "Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
-        "Seller: @{seller} (<code>{seller_id}</code>)\n"
-        "Amount: {amount}\n"
-        "NFT: {nft}\n"
-        "Terms: {desc}\n"
-        "Status: {status}"
+        "🛡️ <b>Deal #{id}</b>\n"
+        "📂 {cat}\n"
+        "🏷 {title}\n\n"
+        "🛒 Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
+        "💼 Seller: @{seller} (<code>{seller_id}</code>)\n"
+        "💰 Amount: <b>{amount}</b>\n"
+        "🎁 NFT: {nft}\n"
+        "📝 Terms: {desc}\n"
+        "📌 Status: <b>{status}</b>"
     ),
     "deal_opened_ton": (
-        "Deal #{id} · TON → RUB\n"
-        "Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
-        "Seller: @{seller} (<code>{seller_id}</code>)\n"
-        "TON: <b>{ton}</b>\n"
-        "Rubles: <b>{rub} ₽</b>\n"
-        "Buyer address: <code>{buyer_ton}</code>\n"
-        "Escrow V4: <code>{escrow}</code>\n"
-        "Memo: <code>{comment}</code>\n"
-        "TON received: {received}\n"
-        "Seller payout details:\n{req}\n"
-        "Terms: {desc}\n"
-        "Payout: <code>{payout}</code>\n"
-        "Status: {status}"
+        "💎 <b>Deal #{id}</b> · TON → RUB\n\n"
+        "🛒 Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
+        "💼 Seller: @{seller} (<code>{seller_id}</code>)\n"
+        "🔹 TON: <b>{ton}</b>\n"
+        "🔹 Rubles: <b>{rub} ₽</b>\n"
+        "📥 Buyer address: <code>{buyer_ton}</code>\n"
+        "🏦 Escrow V4: <code>{escrow}</code>\n"
+        "🔖 Memo: <code>{comment}</code>\n"
+        "📥 TON received: {received}\n"
+        "💳 Seller payout details:\n{req}\n"
+        "📝 Terms: {desc}\n"
+        "🔗 Payout: <code>{payout}</code>\n"
+        "📌 Status: <b>{status}</b>"
     ),
-    "deal_status_pending": "waiting",
-    "deal_status_open": "open",
-    "deal_status_wait_ton": "waiting for TON escrow",
-    "deal_status_funded": "TON locked, waiting for rubles",
-    "deal_status_rub_sent": "rubles sent, waiting confirmation",
-    "deal_status_paid": "paid",
-    "deal_status_dispute": "dispute",
-    "deal_status_review": "completed, review",
-    "deal_status_closed": "closed",
-    "deal_status_cancelled": "cancelled",
-    "deal_status_listed": "listed, waiting for a buyer",
+    "deal_status_pending": "⏳ waiting",
+    "deal_status_open": "🟢 open",
+    "deal_status_wait_ton": "⏳ waiting for TON escrow",
+    "deal_status_funded": "🔒 TON locked, waiting for rubles",
+    "deal_status_rub_sent": "💸 rubles sent, waiting confirmation",
+    "deal_status_paid": "💳 paid",
+    "deal_status_dispute": "⚠️ dispute",
+    "deal_status_review": "⭐ completed, review",
+    "deal_status_closed": "✅ closed",
+    "deal_status_cancelled": "❌ cancelled",
+    "deal_status_listed": "📣 listed, waiting for a buyer",
     "deal_set_price": "Set amount",
     "deal_set_nft": "Attach NFT",
     "deal_set_desc": "Terms",
@@ -723,20 +746,20 @@ EN = {
         "{extra}"
     ),
     "btn_feed": "Listings",
-    "deal_mode": "How do you want to open a deal?",
+    "deal_mode": "🛡️ <b>How do you want to open a deal?</b>",
     "deal_private": "With a user (username)",
     "deal_public": "Post to the channel",
-    "deal_channel": "Deals channel",
+    "deal_channel": "📣 Deals channel",
     "deal_take": "Open this deal",
     "deal_manual_btn": "Memo",
-    "deal_ask_cat": "Deal category?",
-    "deal_ask_group": "What are you selling or buying?",
+    "deal_ask_cat": "📂 <b>Deal category</b>",
+    "deal_ask_group": "🛡️ <b>What are you selling or buying?</b>",
     "deal_ask_title": "Short listing title for the channel. Example: Roblox 1200 Robux, email unlinked.",
     "deal_list_ok": "Listing #{id} is in the channel. When a buyer opens it, both of you get the memo.",
     "deal_list_no_channel": "No deals channel in config.ini [bot] deals_channel. The listing is still in the bot feed.",
     "deal_list_ton": "TON → RUB deals are direct only, not posted to the channel.",
     "deal_listed_taken": "This listing is already taken or closed.",
-    "deal_feed_empty": "No open listings.",
+    "deal_feed_empty": "🛒 No open listings.",
     "deal_feed_line": "#{id} · {cat} · {amount}\n{title}\n@{seller}",
     "deal_need_deposit": "Top up your balance in the profile first, then open the deal.",
     "deal_need_price": "The listing must have a price greater than zero.",
@@ -749,14 +772,14 @@ EN = {
         "{desc}\n\n"
         "Pay through the escrow bot. Tap Open in bot."
     ),
-    "channel_open": "Open in bot",
+    "channel_open": "🛡️ Open in bot",
     "channel_taken": "🔒 This deal was taken.",
     "channel_closed": "🔒 Listing removed.",
     "deal_taken_seller": "Buyer @{username} opened listing #{id}. Read the memo and wait for payment.",
-    "faq_title": "F.A.Q",
-    "faq_empty": "No articles yet. An admin can add them in the admin panel.",
-    "faq_missing": "This article was removed.",
-    "support_text": "Contact support: @{support}\n{chat}",
+    "faq_title": "❓ <b>F.A.Q</b>\n\nAnswers to common questions.",
+    "faq_empty": "❓ No articles yet. An admin can add them in the admin panel.",
+    "faq_missing": "⚠️ This article was removed.",
+    "support_text": "💬 <b>Support</b>\n\nMessage us: @{support}\n{chat}",
     "deal_dispute_ask": "Describe the problem in one message. You can attach a photo.",
     "deal_dispute_evidence_ask": "Send text or a photo. Tap Done when you are finished.",
     "deal_dispute_thread": "Thread",

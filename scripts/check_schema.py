@@ -119,6 +119,12 @@ async def main() -> None:
         assert not await db.claim_nft(nft_b, NFT_AVAILABLE, NFT_LOCKED, deal_id=paid)
         exclusive = await db.create_deal(1, 2, exclusive=True)
         assert exclusive is None
+        from app.keyboards import CatCB
+        packed = CatCB(k="acc", g=1).pack()
+        assert ":" not in CatCB(k="acc", g=1).k
+        assert packed.startswith("cat:")
+        parsed = CatCB.unpack(packed)
+        assert parsed.k == "acc" and parsed.g == 1
         await db.close()
         print("ok")
     finally:

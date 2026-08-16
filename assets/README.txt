@@ -1,6 +1,6 @@
 Put images here, or send them from /admin → Картинки меню.
 
-Names (jpg / jpeg / png / webp), if you drop files instead of uploading in the bot:
+Default banners are already here (jpg). Names:
 
   menu.jpg         main menu
   profile.jpg      profile
@@ -15,4 +15,3 @@ Names (jpg / jpeg / png / webp), if you drop files instead of uploading in the b
   support.jpg      support
 
 Admin photos in the bot override these files.
-If nothing is set, the screen stays text-only.

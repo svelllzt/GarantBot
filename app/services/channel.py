@@ -67,7 +67,7 @@ def listing_kb(settings: Settings, deal_id: int, lang: str) -> InlineKeyboardMar
     if not user:
         return None
     kb = InlineKeyboardBuilder()
-    kb.button(text=t(lang, "channel_open"), url=f"https://t.me/{user}?start=d{deal_id}")
+    kb.button(text=t(lang, "channel_open"), style="success", url=f"https://t.me/{user}?start=d{deal_id}")
     return kb.as_markup()
 
 

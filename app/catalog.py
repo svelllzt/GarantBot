@@ -17,17 +17,17 @@ CATS = (
 )
 
 _LABEL = {
-    "nft": {"ru": "NFT-подарок Telegram", "en": "Telegram NFT gift"},
-    "acc_rbx": {"ru": "Аккаунт Roblox", "en": "Roblox account"},
-    "acc_stm": {"ru": "Аккаунт Steam", "en": "Steam account"},
-    "acc_epic": {"ru": "Аккаунт Epic Games", "en": "Epic Games account"},
-    "acc_dsc": {"ru": "Аккаунт Discord", "en": "Discord account"},
-    "acc_tg": {"ru": "Аккаунт Telegram", "en": "Telegram account"},
-    "acc_soc": {"ru": "Соцсеть / почта", "en": "Social / email account"},
-    "acc_game": {"ru": "Игровой аккаунт", "en": "Game account"},
-    "goods": {"ru": "Товар / услуга", "en": "Goods / service"},
-    "ton": {"ru": "TON → рубли", "en": "TON → RUB"},
-    "other": {"ru": "Другое", "en": "Other"},
+    "nft": {"ru": "🎁 NFT-подарок Telegram", "en": "🎁 Telegram NFT gift"},
+    "acc_rbx": {"ru": "🎮 Аккаунт Roblox", "en": "🎮 Roblox account"},
+    "acc_stm": {"ru": "🎯 Аккаунт Steam", "en": "🎯 Steam account"},
+    "acc_epic": {"ru": "🟣 Аккаунт Epic Games", "en": "🟣 Epic Games account"},
+    "acc_dsc": {"ru": "💬 Аккаунт Discord", "en": "💬 Discord account"},
+    "acc_tg": {"ru": "✈️ Аккаунт Telegram", "en": "✈️ Telegram account"},
+    "acc_soc": {"ru": "📱 Соцсеть / почта", "en": "📱 Social / email account"},
+    "acc_game": {"ru": "🕹️ Игровой аккаунт", "en": "🕹️ Game account"},
+    "goods": {"ru": "📦 Товар / услуга", "en": "📦 Goods / service"},
+    "ton": {"ru": "💎 TON → рубли", "en": "💎 TON → RUB"},
+    "other": {"ru": "✨ Другое", "en": "✨ Other"},
 }
 
 _MANUAL = {
@@ -281,11 +281,11 @@ GROUPS = (
 )
 
 _GROUP_LABEL = {
-    "acc": {"ru": "Аккаунты", "en": "Accounts"},
-    "crypto": {"ru": "Крипта", "en": "Crypto"},
-    "nft": {"ru": "NFT-подарки", "en": "NFT gifts"},
-    "goods": {"ru": "Товар / услуга", "en": "Goods / service"},
-    "other": {"ru": "Другое", "en": "Other"},
+    "acc": {"ru": "🎮 Аккаунты", "en": "🎮 Accounts"},
+    "crypto": {"ru": "💎 Крипта", "en": "💎 Crypto"},
+    "nft": {"ru": "🎁 NFT-подарки", "en": "🎁 NFT gifts"},
+    "goods": {"ru": "📦 Товар / услуга", "en": "📦 Goods / service"},
+    "other": {"ru": "✨ Другое", "en": "✨ Other"},
 }
 
 
