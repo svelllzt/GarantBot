@@ -4,7 +4,7 @@ from html import escape
 from aiogram.types import CallbackQuery, Message
 
 from app.i18n import t
-from app.storage import DEAL_CLOSED, DEAL_PENDING, KIND_TON_RUB
+from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_LISTED, DEAL_PENDING, KIND_TON_RUB
 
 _AMOUNT = re.compile(r"^\d+([.,]\d{1,2})?$")
 _TON_AMT = re.compile(r"^\d+([.,]\d{1,9})?$")
@@ -98,6 +98,44 @@ def is_ton_deal(deal) -> bool:
         return False
 
 
+def is_nft_deal(deal) -> bool:
+    try:
+        return (deal["category"] or "") == "nft"
+    except (KeyError, IndexError, TypeError):
+        return False
+
+
+def listing_owner(deal) -> int:
+    try:
+        return int(deal["seller_id"] or 0) or int(deal["buyer_id"] or 0)
+    except (KeyError, IndexError, TypeError):
+        return 0
+
+
+def listing_is_buy(deal) -> bool:
+    try:
+        return int(deal["seller_id"] or 0) == 0 and int(deal["buyer_id"] or 0) != 0
+    except (KeyError, IndexError, TypeError):
+        return False
+
+
+def deal_currency(deal, fallback: str) -> str:
+    if is_nft_deal(deal):
+        return "₽"
+    return fallback
+
+
+def is_pdf_document(message) -> bool:
+    doc = getattr(message, "document", None)
+    if doc is None:
+        return False
+    mime = (doc.mime_type or "").lower()
+    name = (doc.file_name or "").lower()
+    if mime == "application/pdf":
+        return True
+    return name.endswith(".pdf") and not mime.startswith("image/")
+
+
 def has_rub_req(user) -> bool:
     if user is None:
         return False
@@ -169,7 +207,29 @@ async def render_deal(db, deal, lang: str, currency: str, escrow: str = "") -> s
             payout=deal["payout_hash"] or "—",
         )
     nft = await db.get_nft(deal["nft_id"]) if deal["nft_id"] else None
-    amount = f"{money(deal['amount'])} {currency}" if deal["amount"] is not None else "—"
+    pay = deal_currency(deal, currency)
+    amount = f"{money(deal['amount'])} {pay}" if deal["amount"] is not None else "—"
+    if is_nft_deal(deal):
+        show_req = deal["status"] not in {DEAL_PENDING, DEAL_LISTED, DEAL_CANCELLED}
+        req = seller_req_text(seller, lang) if show_req and seller else t(lang, "not_set")
+        receipt = t(lang, "deal_receipt_yes") if deal["receipt_id"] else t(lang, "deal_receipt_none")
+        return t(
+            lang,
+            "deal_opened_nft",
+            id=deal["id"],
+            cat=cat,
+            title=h(title) if title else cat,
+            buyer=username_of(buyer) if buyer else "-",
+            buyer_id=deal["buyer_id"] or "—",
+            seller=username_of(seller) if seller else "-",
+            seller_id=deal["seller_id"] or "—",
+            amount=amount,
+            nft=nft_title(nft) if nft else t(lang, "deal_nft_none"),
+            req=req,
+            receipt=receipt,
+            desc=h(deal["description"]) if deal["description"] else "—",
+            status=t(lang, deal_status_key(deal["status"])),
+        )
     return t(
         lang,
         "deal_opened",
@@ -191,6 +251,8 @@ def history_line(deal, user_id: int, peer_name: str, lang: str, currency: str) -
     seller = user_id == deal["seller_id"]
     if is_ton_deal(deal):
         amount = f"{money_ton(deal['ton_amount'])} TON / {money(deal['rub_amount'])} ₽"
+    elif is_nft_deal(deal):
+        amount = f"{money(deal['amount'])} ₽" if deal["amount"] else "—"
     else:
         amount = f"{money(deal['amount'])} {currency}" if deal["amount"] else "—"
     return t(

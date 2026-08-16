@@ -4,7 +4,7 @@ import tempfile
 
 from app.i18n import EN, RU
 from app.services.ton import ton_to_currency
-from app.storage import DEAL_OPEN, DEAL_PAID, KIND_TON_RUB, NFT_AVAILABLE, NFT_LOCKED, Storage
+from app.storage import DEAL_CLOSED, DEAL_LISTED, DEAL_OPEN, DEAL_PAID, KIND_TON_RUB, NFT_AVAILABLE, NFT_LOCKED, Storage
 
 
 async def main() -> None:
@@ -88,7 +88,7 @@ async def main() -> None:
         assert info["users"] >= 2
         assert "deals" in info
         deal_cols = await db._columns("deals")
-        for name in ("category", "title", "channel_msg_id", "kind", "dispute_reason", "dispute_by", "nft_sent"):
+        for name in ("category", "title", "channel_msg_id", "kind", "dispute_reason", "dispute_by", "nft_sent", "receipt_id"):
             assert name in deal_cols, name
 
         missing = set(RU) - set(EN)
@@ -125,6 +125,52 @@ async def main() -> None:
         assert packed.startswith("cat:")
         parsed = CatCB.unpack(packed)
         assert parsed.k == "acc" and parsed.g == 1
+
+        from app.services import deals as dsvc
+        from app.services.deals import DealError as DealErr
+
+        for row in await db.fetchall("SELECT id FROM deals"):
+            await db.touch_deal(row["id"], status=DEAL_CLOSED)
+        await db.set_nft_status(nft_id, NFT_AVAILABLE, deal_id=None)
+        await db.change_balance(2, -float((await db.get_user(2))["balance"]))
+        assert float((await db.get_user(2))["balance"]) == 0
+        listed_nft = await dsvc.create_listing(
+            db, 1, "nft", "Gift", 1500, "unique gift", nft_id=nft_id
+        )
+        listed_row = await db.get_deal(listed_nft)
+        assert listed_row["status"] == DEAL_LISTED
+        assert listed_row["nft_id"] == nft_id
+        locked = await db.get_nft(nft_id)
+        assert locked["status"] == NFT_LOCKED
+        await dsvc.take_listing(db, listed_nft, 2)
+        taken = await db.get_deal(listed_nft)
+        assert taken["status"] == DEAL_OPEN
+        assert taken["buyer_id"] == 2
+        assert float((await db.get_user(2))["balance"]) == 0
+        await db.touch_deal(listed_nft, receipt_id="pdf-file")
+        assert (await db.get_deal(listed_nft))["receipt_id"] == "pdf-file"
+        try:
+            await dsvc.pay(db, listed_nft, 2)
+            raise AssertionError("nft pay must fail")
+        except DealErr as exc:
+            assert exc.key == "deal_nft_no_pay"
+        await db.touch_deal(listed_nft, status=DEAL_CLOSED)
+        await db.set_nft_status(nft_id, NFT_AVAILABLE, deal_id=None)
+        await db.upsert_user(3, "seller2", "Оля")
+        await db.set_requisite(3, "card", "5555555555554444")
+        nft_c = await db.add_nft(3, gift_id="g4", slug="giftc", title="C", num=3, msg_id=101, from_user_id=3, is_unique=True)
+        buy_ad = await dsvc.create_listing(
+            db, 2, "nft", "Want gift", 2000, "buy", as_buyer=True
+        )
+        assert buy_ad
+        want = await db.get_deal(buy_ad)
+        assert want["seller_id"] == 0
+        assert want["buyer_id"] == 2
+        await dsvc.take_listing(db, buy_ad, 3, nft_id=nft_c)
+        opened = await db.get_deal(buy_ad)
+        assert opened["seller_id"] == 3
+        assert opened["nft_id"] == nft_c
+
         await db.close()
         print("ok")
     finally:

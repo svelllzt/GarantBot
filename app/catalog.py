@@ -34,19 +34,19 @@ _MANUAL = {
     "nft": {
         "ru": (
             "<b>Памятка · NFT-подарок</b>\n\n"
-            "1. Покупатель оплачивает сделку с баланса бота. Пока товар не подтверждён, деньги у гаранта.\n"
-            "2. Продавец заранее кладёт уникальный подарок на банковский аккаунт бота — он появится в инвентаре.\n"
-            "3. В сделке продавец прикрепляет NFT. После оплаты бот сам переводит подарок покупателю (на банке должны быть Stars, обычно 25★).\n"
-            "4. Не подтверждайте получение, пока подарок не появился у вас в Telegram.\n"
-            "5. Если Stars не хватило, бот дошлёт подарок сам после пополнения. Иначе откройте спор."
+            "1. Продавец сначала отправляет уникальный подарок на банковский аккаунт бота. Без NFT в инвентаре сделку создать нельзя.\n"
+            "2. Цена в рублях. Оплата идёт по реквизитам продавца, не с баланса бота.\n"
+            "3. Покупатель переводит деньги и присылает чек строго файлом PDF. Другие форматы не принимаются.\n"
+            "4. Чек уходит продавцу. Если он подтвердил, что деньги пришли, бот сам переводит NFT покупателю (на банке должны быть Stars, обычно 25★).\n"
+            "5. Не подтверждайте ничего, пока подарок не появился у вас в Telegram. Если Stars не хватило — бот дошлёт сам после пополнения, иначе спор."
         ),
         "en": (
             "<b>Memo · NFT gift</b>\n\n"
-            "1. The buyer pays from the bot balance. Funds stay in escrow until confirmation.\n"
-            "2. The seller sends the unique gift to the bot bank account first so it appears in inventory.\n"
-            "3. The seller attaches the NFT. After payment the bot transfers it to the buyer (the bank account needs Stars, usually 25★).\n"
-            "4. Do not confirm until the gift is in your Telegram account.\n"
-            "5. If Stars run out, the bot will send the gift after a top-up. Otherwise open a dispute."
+            "1. The seller must send the unique gift to the bot bank account first. No deal without that NFT in inventory.\n"
+            "2. The price is in rubles. The buyer pays the seller’s details, not the bot balance.\n"
+            "3. The buyer then uploads a PDF receipt only. Photos and other files are rejected.\n"
+            "4. The seller checks the PDF. After they confirm the money arrived, the bot transfers the NFT (the bank account needs Stars, usually 25★).\n"
+            "5. Do not confirm until the gift is in your Telegram. If Stars run out, the bot will send it after a top-up. Otherwise open a dispute."
         ),
     },
     "acc_rbx": {

@@ -55,6 +55,8 @@ DEAL_FIELDS = {
     "buyer_id",
     "dispute_reason",
     "dispute_by",
+    "receipt_id",
+    "seller_id",
 }
 WALLET_PENDING = "pending"
 WALLET_DONE = "done"
@@ -128,6 +130,7 @@ class Storage:
                 payout_hash TEXT,
                 dispute_reason TEXT,
                 dispute_by INTEGER,
+                receipt_id TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -268,6 +271,7 @@ class Storage:
                 "buyer_id": "INTEGER",
                 "dispute_reason": "TEXT",
                 "dispute_by": "INTEGER",
+                "receipt_id": "TEXT",
             },
         )
         await self._add_missing(
@@ -468,6 +472,7 @@ class Storage:
         status: str | None = None,
         amount: float | None = None,
         description: str | None = None,
+        nft_id: int | None = None,
         exclusive: bool = False,
     ) -> Optional[int]:
         if kind not in {KIND_GOODS, KIND_TON_RUB}:
@@ -482,6 +487,7 @@ class Storage:
             (title or "")[:120] or None,
             amount,
             description,
+            nft_id or None,
             stamp,
             stamp,
         )
@@ -490,19 +496,19 @@ class Storage:
             cur = await self.execute(
                 f"""
                 INSERT INTO deals (
-                    seller_id, buyer_id, status, kind, category, title, amount, description, created_at, updated_at
+                    seller_id, buyer_id, status, kind, category, title, amount, description, nft_id, created_at, updated_at
                 )
-                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 WHERE NOT EXISTS (
                     SELECT 1 FROM deals
                     WHERE status IN ({placeholders})
                       AND (
-                        seller_id = ? OR buyer_id = ?
+                        (? != 0 AND (seller_id = ? OR buyer_id = ?))
                         OR (? != 0 AND (seller_id = ? OR buyer_id = ?))
                       )
                 )
                 """,
-                (*values, *ACTIVE_DEALS, seller_id, seller_id, buyer_id, buyer_id, buyer_id),
+                (*values, *ACTIVE_DEALS, seller_id, seller_id, seller_id, buyer_id, buyer_id, buyer_id),
             )
             if cur.rowcount != 1:
                 return None
@@ -510,9 +516,9 @@ class Storage:
         cur = await self.execute(
             """
             INSERT INTO deals (
-                seller_id, buyer_id, status, kind, category, title, amount, description, created_at, updated_at
+                seller_id, buyer_id, status, kind, category, title, amount, description, nft_id, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             values,
         )

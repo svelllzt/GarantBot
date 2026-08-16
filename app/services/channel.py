@@ -8,7 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from app.catalog import label
 from app.config import Settings
 from app.i18n import t
-from app.util import h, money, username_of
+from app.util import h, is_nft_deal, listing_is_buy, money, username_of
 
 log = logging.getLogger("channel")
 
@@ -45,18 +45,45 @@ def chat_id(settings: Settings) -> str | int | None:
     return None
 
 
-def listing_text(deal, seller, lang: str, currency: str) -> str:
+def listing_text(deal, poster, lang: str, currency: str) -> str:
     cat = label(deal["category"] if "category" in deal.keys() else None, lang)
     title = (deal["title"] if "title" in deal.keys() else "") or cat
     desc = h(deal["description"]) if deal["description"] else "—"
-    amount = f"{money(deal['amount'])} {currency}" if deal["amount"] is not None else "—"
+    pay = "₽" if is_nft_deal(deal) else currency
+    amount = f"{money(deal['amount'])} {pay}" if deal["amount"] is not None else "—"
+    name = username_of(poster) if poster else "-"
+    if is_nft_deal(deal) and listing_is_buy(deal):
+        key = "channel_listing_nft_buy"
+        return t(lang, key, id=deal["id"], cat=cat, title=h(title), buyer=name, amount=amount, desc=desc)
+    if is_nft_deal(deal):
+        return t(
+            lang,
+            "channel_listing_nft",
+            id=deal["id"],
+            cat=cat,
+            title=h(title),
+            seller=name,
+            amount=amount,
+            desc=desc,
+        )
+    if listing_is_buy(deal):
+        return t(
+            lang,
+            "channel_listing_buy",
+            id=deal["id"],
+            cat=cat,
+            title=h(title),
+            buyer=name,
+            amount=amount,
+            desc=desc,
+        )
     return t(
         lang,
         "channel_listing",
         id=deal["id"],
         cat=cat,
         title=h(title),
-        seller=username_of(seller) if seller else "-",
+        seller=name,
         amount=amount,
         desc=desc,
     )

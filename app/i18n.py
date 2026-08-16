@@ -79,6 +79,7 @@ RU = {
         "ℹ️ <b>О сервисе</b>\n\n"
         "Безопасные сделки: аккаунты, NFT-подарки, товар, TON.\n\n"
         "• Оплата с баланса — деньги у гаранта до подтверждения\n"
+        "• NFT за рубли — по реквизитам продавца, чек только PDF\n"
         "• TON → рубли через кошелёк V4\n"
         "• Памятка по категории при открытии сделки\n\n"
         "💸 Комиссия: <b>{commission}%</b> с продавца\n"
@@ -132,6 +133,19 @@ RU = {
         "📝 Условия: {desc}\n"
         "📌 Статус: <b>{status}</b>"
     ),
+    "deal_opened_nft": (
+        "🎁 <b>Сделка #{id}</b> · NFT за рубли\n"
+        "📂 {cat}\n"
+        "🏷 {title}\n\n"
+        "🛒 Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
+        "💼 Продавец: @{seller} (<code>{seller_id}</code>)\n"
+        "💰 Цена: <b>{amount}</b>\n"
+        "🎁 NFT: {nft}\n"
+        "💳 Реквизиты продавца:\n{req}\n"
+        "📄 Чек: {receipt}\n"
+        "📝 Условия: {desc}\n"
+        "📌 Статус: <b>{status}</b>"
+    ),
     "deal_opened_ton": (
         "💎 <b>Сделка #{id}</b> · TON → рубли\n\n"
         "🛒 Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
@@ -168,6 +182,7 @@ RU = {
     "deal_rub_paid": "Я отправил рубли",
     "deal_rub_ok": "Рубли получены",
     "deal_pay": "Оплатить",
+    "deal_pdf": "Чек PDF",
     "deal_confirm": "Товар получен",
     "deal_dispute": "Спор",
     "deal_cancel": "Отменить",
@@ -176,10 +191,26 @@ RU = {
     "deal_price_locked": "Сумму уже нельзя менять.",
     "deal_ask_desc": "Кратко опишите товар и условия передачи.",
     "deal_desc_set": "Условия сохранены.",
-    "deal_nft_pick": "Выберите NFT из инвентаря. Он будет заморожен до конца сделки.",
-    "deal_nft_empty": "В инвентаре нет свободных NFT.",
+    "deal_nft_pick": "Выберите NFT из инвентаря. Сначала подарок должен лежать на банке — без этого сделку создать нельзя. После выбора он заморозится.",
+    "deal_nft_empty": "В инвентаре нет свободных NFT. Сначала отправьте подарок на банк.",
     "deal_nft_set": "NFT прикреплён: {title}.",
     "deal_nft_none": "не прикреплён",
+    "deal_nft_need_item": "Сначала отправьте NFT на банк. Без подарка в инвентаре сделку на него создать нельзя.",
+    "deal_nft_need_req": "Чтобы продать NFT, укажите реквизиты в профиле: карта или телефон и банк.",
+    "deal_nft_pdf_only": "Нужен только чек в формате PDF. Фото и другие файлы не принимаются.",
+    "deal_nft_pdf_ask": "Оплатите по реквизитам продавца и пришлите чек одним файлом PDF.",
+    "deal_nft_pdf_sent": "Чек PDF отправлен продавцу. Ждём подтверждения, что деньги пришли.",
+    "deal_nft_pdf_got": (
+        "Покупатель прислал чек PDF по сделке #{id}.\n"
+        "Проверьте перевод. Если деньги пришли — подтвердите, NFT уйдёт покупателю автоматически."
+    ),
+    "deal_nft_confirm_ask": "Рубли пришли по реквизитам? После подтверждения NFT автоматически уйдёт покупателю.",
+    "deal_nft_done": "Деньги подтверждены. NFT отправлен покупателю.",
+    "deal_nft_done_buyer": "Продавец подтвердил оплату. NFT отправлен вам.",
+    "deal_nft_no_pay": "NFT оплачивается по реквизитам продавца, не с баланса бота. Прикрепите чек PDF.",
+    "deal_nft_pay_hint": "Оплатите <b>{amount} ₽</b> по реквизитам продавца и прикрепите чек PDF.",
+    "deal_receipt_none": "не прикреплён",
+    "deal_receipt_yes": "PDF получен",
     "deal_pay_no_amount": "Продавец ещё не указал сумму.",
     "deal_pay_low": "Недостаточно средств. Нужно {need} {currency}, на балансе {have}.",
     "deal_paid": "Оплата прошла. Продавец передаёт товар.",
@@ -325,6 +356,7 @@ RU = {
     "deal_ask_group": "🛡️ <b>Что продаёте или покупаете?</b>",
     "deal_ask_title": "🏷 Короткое название объявления, как в канале. Например: Roblox 1200 Robux, почта отвязана.",
     "deal_list_ok": "✅ Объявление #{id} в канале. Когда покупатель откроет сделку, обоим придёт памятка.",
+    "deal_list_ok_buy": "✅ Объявление #{id} в канале. Когда продавец откроет сделку, обоим придёт памятка.",
     "deal_list_no_channel": "📣 Канал не задан в config.ini. Объявление всё равно в витрине бота.",
     "deal_list_ton": "⚠️ TON → рубли только напрямую с человеком, не в канал.",
     "deal_listed_taken": "⚠️ Объявление уже сняли или закрыли.",
@@ -332,7 +364,7 @@ RU = {
     "deal_feed_line": "#{id} · {cat} · {amount}\n{title}\n@{seller}",
     "deal_need_deposit": "⬇️ Сначала пополните баланс в профиле, затем откройте сделку.",
     "deal_need_price": "⚠️ У объявления должна быть сумма больше нуля.",
-    "nft_need_gift": "🎁 Продавец ещё не прикрепил NFT к объявлению.",
+    "nft_need_gift": "🎁 Сначала закиньте NFT на банк и выберите его. Без подарка в инвентаре сделку открыть нельзя.",
     "channel_listing": (
         "🛡️ <b>Сделка #{id}</b> · {cat}\n"
         "{title}\n\n"
@@ -341,10 +373,35 @@ RU = {
         "{desc}\n\n"
         "Оплата через бота-гаранта. Нажмите «Открыть в боте»."
     ),
+    "channel_listing_buy": (
+        "🛡️ <b>Ищу #{id}</b> · {cat}\n"
+        "{title}\n\n"
+        "🛒 Покупатель: @{buyer}\n"
+        "💰 Готов заплатить: <b>{amount}</b>\n\n"
+        "{desc}\n\n"
+        "Оплата через бота-гаранта. Нажмите «Открыть в боте»."
+    ),
+    "channel_listing_nft": (
+        "🎁 <b>NFT #{id}</b> · {cat}\n"
+        "{title}\n\n"
+        "💼 Продавец: @{seller}\n"
+        "💰 Цена: <b>{amount}</b>\n\n"
+        "{desc}\n\n"
+        "Оплата по реквизитам продавца. Покупатель присылает чек PDF. Нажмите «Открыть в боте»."
+    ),
+    "channel_listing_nft_buy": (
+        "🎁 <b>Куплю NFT #{id}</b> · {cat}\n"
+        "{title}\n\n"
+        "🛒 Покупатель: @{buyer}\n"
+        "💰 Готов заплатить: <b>{amount}</b>\n\n"
+        "{desc}\n\n"
+        "Продавец сначала кладёт NFT на банк. Оплата по его реквизитам, чек PDF. Нажмите «Открыть в боте»."
+    ),
     "channel_open": "🛡️ Открыть в боте",
     "channel_taken": "🔒 Сделку открыли, объявление снято.",
     "channel_closed": "🔒 Объявление снято.",
     "deal_taken_seller": "🛒 Покупатель @{username} открыл объявление #{id}. Смотрите памятку и ждите оплату.",
+    "deal_taken_buyer": "💼 Продавец @{username} откликнулся на объявление #{id}. Смотрите памятку.",
     "faq_title": "❓ <b>F.A.Q</b>\n\nОтветы на частые вопросы.",
     "faq_empty": "❓ Пока нет статей. Администратор добавит их в админке.",
     "faq_missing": "⚠️ Статья удалена.",
@@ -509,6 +566,7 @@ EN = {
         "ℹ️ <b>About</b>\n\n"
         "Safe P2P deals: accounts, NFT gifts, goods, TON.\n\n"
         "• Pay from balance — funds stay in escrow until confirm\n"
+        "• NFT for rubles — pay the seller’s details, PDF receipt only\n"
         "• TON → RUB via Wallet V4\n"
         "• Category memo when a deal opens\n\n"
         "💸 Fee: <b>{commission}%</b> from the seller\n"
@@ -562,6 +620,19 @@ EN = {
         "📝 Terms: {desc}\n"
         "📌 Status: <b>{status}</b>"
     ),
+    "deal_opened_nft": (
+        "🎁 <b>Deal #{id}</b> · NFT for rubles\n"
+        "📂 {cat}\n"
+        "🏷 {title}\n\n"
+        "🛒 Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
+        "💼 Seller: @{seller} (<code>{seller_id}</code>)\n"
+        "💰 Price: <b>{amount}</b>\n"
+        "🎁 NFT: {nft}\n"
+        "💳 Seller details:\n{req}\n"
+        "📄 Receipt: {receipt}\n"
+        "📝 Terms: {desc}\n"
+        "📌 Status: <b>{status}</b>"
+    ),
     "deal_opened_ton": (
         "💎 <b>Deal #{id}</b> · TON → RUB\n\n"
         "🛒 Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
@@ -598,6 +669,7 @@ EN = {
     "deal_rub_paid": "I sent the rubles",
     "deal_rub_ok": "Rubles received",
     "deal_pay": "Pay",
+    "deal_pdf": "PDF receipt",
     "deal_confirm": "Item received",
     "deal_dispute": "Dispute",
     "deal_cancel": "Cancel",
@@ -606,10 +678,26 @@ EN = {
     "deal_price_locked": "The amount can no longer be changed.",
     "deal_ask_desc": "Describe the item and how it will be delivered.",
     "deal_desc_set": "Terms saved.",
-    "deal_nft_pick": "Pick an NFT from inventory. It will be locked until the deal ends.",
-    "deal_nft_empty": "No free NFTs in inventory.",
+    "deal_nft_pick": "Pick an NFT from inventory. The gift must already be on the bank account — you cannot create a deal without it. It will be locked after you pick it.",
+    "deal_nft_empty": "No free NFTs in inventory. Send the gift to the bank account first.",
     "deal_nft_set": "NFT attached: {title}.",
     "deal_nft_none": "not attached",
+    "deal_nft_need_item": "Send the NFT to the bank first. You cannot create a deal for a gift that is not in inventory.",
+    "deal_nft_need_req": "To sell an NFT, add payout details in your profile: a card or phone plus bank.",
+    "deal_nft_pdf_only": "Only a PDF receipt is accepted. Photos and other files are rejected.",
+    "deal_nft_pdf_ask": "Pay the seller’s details, then send the receipt as a single PDF file.",
+    "deal_nft_pdf_sent": "PDF receipt sent to the seller. Waiting for them to confirm the money arrived.",
+    "deal_nft_pdf_got": (
+        "The buyer sent a PDF receipt for deal #{id}.\n"
+        "Check the transfer. If the money arrived, confirm — the NFT will go to the buyer automatically."
+    ),
+    "deal_nft_confirm_ask": "Did the rubles arrive? After you confirm, the NFT is sent to the buyer automatically.",
+    "deal_nft_done": "Payment confirmed. The NFT was sent to the buyer.",
+    "deal_nft_done_buyer": "The seller confirmed payment. The NFT was sent to you.",
+    "deal_nft_no_pay": "NFT deals are paid to the seller’s details, not from the bot balance. Attach a PDF receipt.",
+    "deal_nft_pay_hint": "Pay <b>{amount} ₽</b> to the seller’s details and attach a PDF receipt.",
+    "deal_receipt_none": "not attached",
+    "deal_receipt_yes": "PDF received",
     "deal_pay_no_amount": "The seller has not set the amount yet.",
     "deal_pay_low": "Not enough funds. Need {need} {currency}, have {have}.",
     "deal_paid": "Payment received. The seller should deliver now.",
@@ -756,6 +844,7 @@ EN = {
     "deal_ask_group": "🛡️ <b>What are you selling or buying?</b>",
     "deal_ask_title": "Short listing title for the channel. Example: Roblox 1200 Robux, email unlinked.",
     "deal_list_ok": "Listing #{id} is in the channel. When a buyer opens it, both of you get the memo.",
+    "deal_list_ok_buy": "Listing #{id} is in the channel. When a seller opens it, both of you get the memo.",
     "deal_list_no_channel": "No deals channel in config.ini [bot] deals_channel. The listing is still in the bot feed.",
     "deal_list_ton": "TON → RUB deals are direct only, not posted to the channel.",
     "deal_listed_taken": "This listing is already taken or closed.",
@@ -763,19 +852,44 @@ EN = {
     "deal_feed_line": "#{id} · {cat} · {amount}\n{title}\n@{seller}",
     "deal_need_deposit": "Top up your balance in the profile first, then open the deal.",
     "deal_need_price": "The listing must have a price greater than zero.",
-    "nft_need_gift": "The seller has not attached an NFT to this listing yet.",
+    "nft_need_gift": "Send the NFT to the bank and attach it first. You cannot open a deal without that gift in inventory.",
     "channel_listing": (
-        "<b>Deal #{id}</b> · {cat}\n"
+        "🛡️ <b>Deal #{id}</b> · {cat}\n"
         "{title}\n\n"
-        "Seller: @{seller}\n"
-        "Price: <b>{amount}</b>\n\n"
+        "💼 Seller: @{seller}\n"
+        "💰 Price: <b>{amount}</b>\n\n"
         "{desc}\n\n"
         "Pay through the escrow bot. Tap Open in bot."
+    ),
+    "channel_listing_buy": (
+        "🛡️ <b>Wanted #{id}</b> · {cat}\n"
+        "{title}\n\n"
+        "🛒 Buyer: @{buyer}\n"
+        "💰 Will pay: <b>{amount}</b>\n\n"
+        "{desc}\n\n"
+        "Pay through the escrow bot. Tap Open in bot."
+    ),
+    "channel_listing_nft": (
+        "🎁 <b>NFT #{id}</b> · {cat}\n"
+        "{title}\n\n"
+        "💼 Seller: @{seller}\n"
+        "💰 Price: <b>{amount}</b>\n\n"
+        "{desc}\n\n"
+        "Pay the seller’s details. The buyer sends a PDF receipt. Tap Open in bot."
+    ),
+    "channel_listing_nft_buy": (
+        "🎁 <b>Buying NFT #{id}</b> · {cat}\n"
+        "{title}\n\n"
+        "🛒 Buyer: @{buyer}\n"
+        "💰 Will pay: <b>{amount}</b>\n\n"
+        "{desc}\n\n"
+        "The seller must put the NFT on the bank first. Pay their details, PDF receipt. Tap Open in bot."
     ),
     "channel_open": "🛡️ Open in bot",
     "channel_taken": "🔒 This deal was taken.",
     "channel_closed": "🔒 Listing removed.",
     "deal_taken_seller": "Buyer @{username} opened listing #{id}. Read the memo and wait for payment.",
+    "deal_taken_buyer": "Seller @{username} took listing #{id}. Read the memo.",
     "faq_title": "❓ <b>F.A.Q</b>\n\nAnswers to common questions.",
     "faq_empty": "❓ No articles yet. An admin can add them in the admin panel.",
     "faq_missing": "⚠️ This article was removed.",

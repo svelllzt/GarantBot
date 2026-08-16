@@ -23,6 +23,7 @@ class DealFlow(StatesGroup):
     buyer_ton = State()
     listing_title = State()
     listing_price = State()
+    receipt_pdf = State()
     dispute_reason = State()
     dispute_evidence = State()
 

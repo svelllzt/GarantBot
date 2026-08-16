@@ -34,11 +34,15 @@ from app.services import channel as ch
 from app.services import deals as svc
 from app.services.deals import DealError
 from app.states import DealFlow
-from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_DISPUTE, DEAL_FUNDED, DEAL_LISTED, DEAL_OPEN, DEAL_PAID, DEAL_PENDING, DEAL_REVIEW, DEAL_RUB_SENT, DEAL_WAIT_TON, KIND_TON_RUB, NFT_AVAILABLE, Storage
+from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_DISPUTE, DEAL_FUNDED, DEAL_LISTED, DEAL_OPEN, DEAL_PAID, DEAL_PENDING, DEAL_REVIEW, DEAL_RUB_SENT, DEAL_WAIT_TON, KIND_TON_RUB, NFT_AVAILABLE, NFT_TRANSFERRED, Storage
 from app.util import (
     history_line,
     is_cancel,
+    is_nft_deal,
+    is_pdf_document,
     is_ton_deal,
+    listing_is_buy,
+    listing_owner,
     money,
     money_ton,
     nft_title,
@@ -78,6 +82,36 @@ async def _send_manual(bot, user_id: int, lang: str, deal) -> None:
         pass
 
 
+async def _publish_listing(bot, user_id: int, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
+    data = await state.get_data()
+    try:
+        deal_id = await svc.create_listing(
+            db,
+            user_id,
+            data.get("category", "goods"),
+            data.get("title", ""),
+            float(data.get("amount") or 0),
+            data.get("description") or "",
+            as_buyer=bool(data.get("as_buyer")),
+            nft_id=int(data.get("nft_id") or 0),
+        )
+    except DealError as exc:
+        await bot.send_message(user_id, svc.err_text(lang, exc))
+        await state.clear()
+        return
+    await state.clear()
+    deal = await db.get_deal(deal_id)
+    poster = await db.get_user(user_id)
+    posted = await ch.publish(bot, settings, db, deal, poster)
+    key = "deal_list_ok_buy" if data.get("as_buyer") else "deal_list_ok"
+    extra = t(lang, key, id=deal_id)
+    if not posted:
+        extra = extra + "\n" + t(lang, "deal_list_no_channel")
+    await bot.send_message(user_id, extra)
+    await _show_deal(bot, db, deal, user_id, lang, settings, theme)
+    await _send_manual(bot, user_id, lang, deal)
+
+
 async def present_start_deal(event, db: Storage, lang: str, settings: Settings, theme: Theme, ton, payload: str) -> bool:
     raw = (payload or "").strip()
     if raw.lower().startswith("deal"):
@@ -90,7 +124,7 @@ async def present_start_deal(event, db: Storage, lang: str, settings: Settings, 
     if deal is None:
         return False
     user_id = event.from_user.id
-    if deal["status"] == DEAL_LISTED and deal["seller_id"] != user_id:
+    if deal["status"] == DEAL_LISTED and listing_owner(deal) != user_id:
         text = await render_deal(db, deal, lang, settings.currency)
         markup = take_kb(lang, theme, deal["id"])
         await paint(event, text, markup, screen="listing", settings=settings)
@@ -149,16 +183,7 @@ async def new_deal(call: CallbackQuery, state: FSMContext, db: Storage, lang: st
 @router.callback_query(DealCB.filter(F.a == "mode"))
 async def pick_mode(call: CallbackQuery, callback_data: DealCB, state: FSMContext, lang: str, theme: Theme, settings: Settings):
     listing = bool(callback_data.x)
-    await state.update_data(listing=listing, as_buyer=not listing)
-    data = await state.get_data()
-    if listing:
-        if data.get("category"):
-            await state.set_state(DealFlow.listing_title)
-            await call.message.answer(t(lang, "deal_ask_title"), reply_markup=cancel_kb(lang, theme))
-            await call.answer()
-            return
-        await paint(call, t(lang, "deal_ask_cat"), category_kb(lang, theme), screen="deal", settings=settings)
-        return
+    await state.update_data(listing=listing)
     await paint(call, t(lang, "deal_role"), role_kb(lang, theme), screen="deal", settings=settings)
 
 
@@ -168,9 +193,11 @@ async def pick_role(call: CallbackQuery, callback_data: DealCB, state: FSMContex
         await call.answer(t(lang, "need_username"), show_alert=True)
         return
     as_buyer = bool(callback_data.x)
-    await state.update_data(as_buyer=as_buyer, listing=False)
+    data = await state.get_data()
+    await state.update_data(as_buyer=as_buyer, listing=bool(data.get("listing")))
     data = await state.get_data()
     category = data.get("category")
+    listing = bool(data.get("listing"))
     if category and payment_kind(category) == KIND_TON_RUB and not as_buyer:
         user = await db.get_user(call.from_user.id)
         if not has_rub_req(user):
@@ -179,6 +206,23 @@ async def pick_role(call: CallbackQuery, callback_data: DealCB, state: FSMContex
         if not user or not user["ton_address"]:
             await call.answer(t(lang, "deal_ton_no_refund"), show_alert=True)
             return
+    if category and needs_nft(category) and not as_buyer:
+        user = await db.get_user(call.from_user.id)
+        if not has_rub_req(user):
+            await call.answer(t(lang, "deal_nft_need_req"), show_alert=True)
+            return
+        items = await db.nfts_of(call.from_user.id, NFT_AVAILABLE)
+        if not items:
+            await call.answer(t(lang, "deal_nft_need_item"), show_alert=True)
+            return
+    if listing:
+        if category:
+            await state.set_state(DealFlow.listing_title)
+            await call.message.answer(t(lang, "deal_ask_title"), reply_markup=cancel_kb(lang, theme))
+            await call.answer()
+            return
+        await paint(call, t(lang, "deal_ask_cat"), category_kb(lang, theme), screen="deal", settings=settings)
+        return
     if category:
         await state.set_state(DealFlow.username)
         await call.message.answer(t(lang, "deal_ask_user"), reply_markup=cancel_kb(lang, theme))
@@ -223,6 +267,18 @@ async def pick_cat(call: CallbackQuery, callback_data: CatCB, state: FSMContext,
     await state.update_data(category=category, kind=kind)
     data = await state.get_data()
     if data.get("listing"):
+        if "as_buyer" not in data:
+            await paint(call, t(lang, "deal_role"), role_kb(lang, theme), screen="deal", settings=settings)
+            return
+        if needs_nft(category) and not data.get("as_buyer"):
+            user = await db.get_user(call.from_user.id)
+            if not has_rub_req(user):
+                await call.answer(t(lang, "deal_nft_need_req"), show_alert=True)
+                return
+            items = await db.nfts_of(call.from_user.id, NFT_AVAILABLE)
+            if not items:
+                await call.answer(t(lang, "deal_nft_need_item"), show_alert=True)
+                return
         await state.set_state(DealFlow.listing_title)
         await call.message.answer(t(lang, "deal_ask_title"), reply_markup=cancel_kb(lang, theme))
         await call.answer()
@@ -235,6 +291,15 @@ async def pick_cat(call: CallbackQuery, callback_data: CatCB, state: FSMContext,
                 return
             if not user or not user["ton_address"]:
                 await call.answer(t(lang, "deal_ton_no_refund"), show_alert=True)
+                return
+        if needs_nft(category) and not data.get("as_buyer"):
+            user = await db.get_user(call.from_user.id)
+            if not has_rub_req(user):
+                await call.answer(t(lang, "deal_nft_need_req"), show_alert=True)
+                return
+            items = await db.nfts_of(call.from_user.id, NFT_AVAILABLE)
+            if not items:
+                await call.answer(t(lang, "deal_nft_need_item"), show_alert=True)
                 return
         await state.set_state(DealFlow.username)
         await call.message.answer(t(lang, "deal_ask_user"), reply_markup=cancel_kb(lang, theme))
@@ -304,7 +369,9 @@ async def save_list_title(message: Message, state: FSMContext, lang: str, settin
         return
     await state.update_data(title=title[:120])
     await state.set_state(DealFlow.listing_price)
-    await message.answer(t(lang, "deal_ask_price", currency=settings.currency), reply_markup=cancel_kb(lang, theme))
+    data = await state.get_data()
+    currency = "₽" if needs_nft(data.get("category")) else settings.currency
+    await message.answer(t(lang, "deal_ask_price", currency=currency), reply_markup=cancel_kb(lang, theme))
 
 
 @router.message(DealFlow.listing_price)
@@ -329,16 +396,17 @@ async def feed(call: CallbackQuery, db: Storage, lang: str, settings: Settings, 
     kb = InlineKeyboardBuilder()
     lines = []
     for deal in rows:
-        seller = await db.get_user(deal["seller_id"])
+        seller = await db.get_user(deal["seller_id"]) if deal["seller_id"] else await db.get_user(deal["buyer_id"])
         cat = label(deal["category"] if "category" in deal.keys() else None, lang)
         title = deal["title"] or cat
+        pay = "₽" if is_nft_deal(deal) else settings.currency
         lines.append(
             t(
                 lang,
                 "deal_feed_line",
                 id=deal["id"],
                 cat=cat,
-                amount=f"{money(deal['amount'])} {settings.currency}" if deal["amount"] is not None else "—",
+                amount=f"{money(deal['amount'])} {pay}" if deal["amount"] is not None else "—",
                 title=title,
                 seller=username_of(seller) if seller else "-",
             )
@@ -355,7 +423,7 @@ async def listing_card(call: CallbackQuery, callback_data: DealCB, db: Storage, 
     if deal is None:
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    if deal["status"] == DEAL_LISTED and deal["seller_id"] != call.from_user.id:
+    if deal["status"] == DEAL_LISTED and listing_owner(deal) != call.from_user.id:
         text = await render_deal(db, deal, lang, settings.currency)
         await paint(call, text, take_kb(lang, theme, deal["id"]), screen="listing", settings=settings)
         await _send_manual(call.bot, call.from_user.id, lang, deal)
@@ -363,16 +431,60 @@ async def listing_card(call: CallbackQuery, callback_data: DealCB, db: Storage, 
     await _show_deal(call.bot, db, deal, call.from_user.id, lang, settings, theme, event=call, ton=ton)
 
 
+async def _after_take(call: CallbackQuery, db: Storage, deal, lang: str, settings: Settings, theme: Theme, ton) -> None:
+    await ch.mark(call.bot, settings, deal, "channel_taken")
+    user = await db.get_user(call.from_user.id)
+    if call.from_user.id == deal["seller_id"]:
+        peer_id = deal["buyer_id"]
+        key = "deal_taken_buyer"
+    else:
+        peer_id = deal["seller_id"]
+        key = "deal_taken_seller"
+    peer = await db.get_user(peer_id) if peer_id else None
+    peer_lang = (peer["lang"] if peer else None) or "ru"
+    await _show_deal(call.bot, db, deal, call.from_user.id, lang, settings, theme, event=call, ton=ton)
+    await _send_manual(call.bot, call.from_user.id, lang, deal)
+    if peer and user and peer_id != call.from_user.id:
+        await call.bot.send_message(
+            peer_id,
+            t(peer_lang, key, username=username_of(user), id=deal["id"]),
+        )
+        await _show_deal(call.bot, db, deal, peer_id, peer_lang, settings, theme, ton=ton)
+        await _send_manual(call.bot, peer_id, peer_lang, deal)
+    if is_nft_deal(deal) and deal["buyer_id"]:
+        buyer = await db.get_user(deal["buyer_id"])
+        seller = await db.get_user(deal["seller_id"])
+        if buyer and seller:
+            buyer_lang = buyer["lang"] or "ru"
+            req = seller_req_text(seller, buyer_lang)
+            await call.bot.send_message(
+                deal["buyer_id"],
+                t(buyer_lang, "deal_nft_pay_hint", amount=money(deal["amount"])) + "\n\n" + req,
+            )
+
+
 @router.callback_query(DealCB.filter(F.a == "take"))
 async def take_deal(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
-    user = await db.get_user(call.from_user.id)
     deal = await db.get_deal(callback_data.i)
-    if user is None or deal is None:
+    if deal is None:
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    need = float(deal["amount"] or 0)
-    if need <= 0 or float(user["balance"] or 0) < need:
-        await call.answer(t(lang, "deal_need_deposit"), show_alert=True)
+    if is_nft_deal(deal) and listing_is_buy(deal):
+        items = await db.nfts_of(call.from_user.id, NFT_AVAILABLE)
+        if not items:
+            await call.answer(t(lang, "deal_nft_need_item"), show_alert=True)
+            return
+        user = await db.get_user(call.from_user.id)
+        if not has_rub_req(user):
+            await call.answer(t(lang, "deal_nft_need_req"), show_alert=True)
+            return
+        await paint(
+            call,
+            t(lang, "deal_nft_pick"),
+            nft_pick_kb(lang, theme, deal["id"], items, action="nfttake"),
+            screen="deal",
+            settings=settings,
+        )
         return
     try:
         await svc.take_listing(db, callback_data.i, call.from_user.id)
@@ -380,18 +492,18 @@ async def take_deal(call: CallbackQuery, callback_data: DealCB, db: Storage, lan
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
     deal = await db.get_deal(callback_data.i)
-    await ch.mark(call.bot, settings, deal, "channel_taken")
-    seller = await db.get_user(deal["seller_id"])
-    seller_lang = (seller["lang"] if seller else None) or "ru"
-    await _show_deal(call.bot, db, deal, call.from_user.id, lang, settings, theme, event=call, ton=ton)
-    await _send_manual(call.bot, call.from_user.id, lang, deal)
-    if seller:
-        await call.bot.send_message(
-            deal["seller_id"],
-            t(seller_lang, "deal_taken_seller", username=username_of(user), id=deal["id"]),
-        )
-        await _show_deal(call.bot, db, deal, deal["seller_id"], seller_lang, settings, theme, ton=ton)
-        await _send_manual(call.bot, deal["seller_id"], seller_lang, deal)
+    await _after_take(call, db, deal, lang, settings, theme, ton)
+
+
+@router.callback_query(DealCB.filter(F.a == "nfttake"))
+async def take_nft_listing(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+    try:
+        await svc.take_listing(db, callback_data.i, call.from_user.id, nft_id=callback_data.x)
+    except DealError as exc:
+        await call.answer(svc.err_text(lang, exc), show_alert=True)
+        return
+    deal = await db.get_deal(callback_data.i)
+    await _after_take(call, db, deal, lang, settings, theme, ton)
 
 
 @router.callback_query(DealCB.filter(F.a == "memo"))
@@ -427,11 +539,37 @@ async def send_offer(call: CallbackQuery, state: FSMContext, db: Storage, lang: 
     as_buyer = data.get("as_buyer", True)
     kind = data.get("kind", "goods")
     category = data.get("category", "goods")
+    nft_id = int(data.get("nft_id") or 0)
     if not peer_id:
         await call.answer(t(lang, "error"), show_alert=True)
         return
+    if needs_nft(category) and not as_buyer and not nft_id:
+        items = await db.nfts_of(call.from_user.id, NFT_AVAILABLE)
+        if not items:
+            await call.answer(t(lang, "deal_nft_need_item"), show_alert=True)
+            return
+        user = await db.get_user(call.from_user.id)
+        if not has_rub_req(user):
+            await call.answer(t(lang, "deal_nft_need_req"), show_alert=True)
+            return
+        await paint(
+            call,
+            t(lang, "deal_nft_pick"),
+            nft_pick_kb(lang, theme, 0, items, action="nftpre"),
+            screen="deal",
+            settings=settings,
+        )
+        return
     try:
-        deal_id = await svc.open_offer(db, call.from_user.id, peer_id, as_buyer, kind, category=category)
+        deal_id = await svc.open_offer(
+            db,
+            call.from_user.id,
+            peer_id,
+            as_buyer,
+            kind,
+            category=category,
+            nft_id=nft_id,
+        )
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
@@ -469,6 +607,27 @@ async def send_offer(call: CallbackQuery, state: FSMContext, db: Storage, lang: 
 
 @router.callback_query(DealCB.filter(F.a == "acc"))
 async def accept_offer(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+    deal = await db.get_deal(callback_data.i)
+    if deal is None:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    if is_nft_deal(deal) and call.from_user.id == deal["seller_id"] and not deal["nft_id"]:
+        items = await db.nfts_of(call.from_user.id, NFT_AVAILABLE)
+        if not items:
+            await call.answer(t(lang, "deal_nft_need_item"), show_alert=True)
+            return
+        user = await db.get_user(call.from_user.id)
+        if not has_rub_req(user):
+            await call.answer(t(lang, "deal_nft_need_req"), show_alert=True)
+            return
+        await paint(
+            call,
+            t(lang, "deal_nft_pick"),
+            nft_pick_kb(lang, theme, deal["id"], items, action="nftacc"),
+            screen="deal",
+            settings=settings,
+        )
+        return
     try:
         await svc.accept(db, callback_data.i, call.from_user.id)
     except DealError as exc:
@@ -485,6 +644,41 @@ async def accept_offer(call: CallbackQuery, callback_data: DealCB, db: Storage, 
         user_lang = user["lang"] or "ru"
         await _show_deal(call.bot, db, deal, uid, user_lang, settings, theme, ton=ton)
         await _send_manual(call.bot, uid, user_lang, deal)
+        if is_nft_deal(deal) and uid == deal["buyer_id"]:
+            seller = await db.get_user(deal["seller_id"])
+            req = seller_req_text(seller, user_lang)
+            await call.bot.send_message(
+                uid,
+                t(user_lang, "deal_nft_pay_hint", amount=money(deal["amount"])) + "\n\n" + req,
+            )
+    await call.answer()
+
+
+@router.callback_query(DealCB.filter(F.a == "nftacc"))
+async def accept_with_nft(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+    try:
+        await svc.attach_nft(db, callback_data.i, call.from_user.id, callback_data.x)
+        await svc.accept(db, callback_data.i, call.from_user.id)
+    except DealError as exc:
+        await call.answer(svc.err_text(lang, exc), show_alert=True)
+        return
+    deal = await db.get_deal(callback_data.i)
+    for uid in (deal["seller_id"], deal["buyer_id"]):
+        if not uid:
+            continue
+        user = await db.get_user(uid)
+        if not user:
+            continue
+        user_lang = user["lang"] or "ru"
+        await _show_deal(call.bot, db, deal, uid, user_lang, settings, theme, ton=ton)
+        await _send_manual(call.bot, uid, user_lang, deal)
+        if is_nft_deal(deal) and uid == deal["buyer_id"]:
+            seller = await db.get_user(deal["seller_id"])
+            req = seller_req_text(seller, user_lang)
+            await call.bot.send_message(
+                uid,
+                t(user_lang, "deal_nft_pay_hint", amount=money(deal["amount"])) + "\n\n" + req,
+            )
     await call.answer()
 
 
@@ -521,12 +715,20 @@ async def reopen(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: 
 @router.callback_query(DealCB.filter(F.a == "price"))
 async def ask_price(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
     deal = await db.get_deal(callback_data.i)
-    if deal is None or deal["seller_id"] != call.from_user.id or deal["status"] not in {DEAL_OPEN, DEAL_LISTED}:
+    if deal is None or deal["status"] not in {DEAL_OPEN, DEAL_LISTED}:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    if deal["status"] == DEAL_LISTED:
+        if listing_owner(deal) != call.from_user.id:
+            await call.answer(t(lang, "error"), show_alert=True)
+            return
+    elif deal["seller_id"] != call.from_user.id:
         await call.answer(t(lang, "error"), show_alert=True)
         return
     await state.set_state(DealFlow.price)
     await state.update_data(deal_id=deal["id"])
-    await call.message.answer(t(lang, "deal_ask_price", currency=settings.currency), reply_markup=cancel_kb(lang, theme))
+    currency = "₽" if is_nft_deal(deal) else settings.currency
+    await call.message.answer(t(lang, "deal_ask_price", currency=currency), reply_markup=cancel_kb(lang, theme))
     await call.answer()
 
 
@@ -547,7 +749,8 @@ async def save_price(message: Message, state: FSMContext, db: Storage, lang: str
         return
     await state.clear()
     deal = await db.get_deal(data["deal_id"])
-    await message.answer(t(lang, "deal_price_set", amount=money(amount), currency=settings.currency))
+    currency = "₽" if is_nft_deal(deal) else settings.currency
+    await message.answer(t(lang, "deal_price_set", amount=money(amount), currency=currency))
     for uid in (deal["seller_id"], deal["buyer_id"]):
         if not uid:
             continue
@@ -561,7 +764,14 @@ async def save_price(message: Message, state: FSMContext, db: Storage, lang: str
 @router.callback_query(DealCB.filter(F.a == "desc"))
 async def ask_desc(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme):
     deal = await db.get_deal(callback_data.i)
-    if deal is None or deal["seller_id"] != call.from_user.id or deal["status"] not in {DEAL_OPEN, DEAL_LISTED}:
+    if deal is None or deal["status"] not in {DEAL_OPEN, DEAL_LISTED}:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    if deal["status"] == DEAL_LISTED:
+        if listing_owner(deal) != call.from_user.id:
+            await call.answer(t(lang, "error"), show_alert=True)
+            return
+    elif deal["seller_id"] != call.from_user.id:
         await call.answer(t(lang, "error"), show_alert=True)
         return
     await state.set_state(DealFlow.description)
@@ -580,33 +790,17 @@ async def save_desc(message: Message, state: FSMContext, db: Storage, lang: str,
         return
     data = await state.get_data()
     if data.get("listing"):
-        try:
-            deal_id = await svc.create_listing(
-                db,
-                message.from_user.id,
-                data.get("category", "goods"),
-                data.get("title", ""),
-                float(data.get("amount") or 0),
-                text,
-            )
-        except DealError as exc:
-            await message.answer(svc.err_text(lang, exc))
-            await state.clear()
-            return
-        await state.clear()
-        deal = await db.get_deal(deal_id)
-        seller = await db.get_user(message.from_user.id)
-        posted = await ch.publish(message.bot, settings, db, deal, seller)
-        extra = t(lang, "deal_list_ok", id=deal_id)
-        if not posted:
-            extra = t(lang, "deal_list_ok", id=deal_id) + "\n" + t(lang, "deal_list_no_channel")
-        await message.answer(extra)
-        await _show_deal(message.bot, db, deal, message.from_user.id, lang, settings, theme, message=message)
-        await _send_manual(message.bot, message.from_user.id, lang, deal)
-        if needs_nft(data.get("category")):
+        await state.update_data(description=text)
+        data = await state.get_data()
+        if needs_nft(data.get("category")) and not data.get("as_buyer") and not data.get("nft_id"):
             items = await db.nfts_of(message.from_user.id, NFT_AVAILABLE)
-            if items:
-                await message.answer(t(lang, "deal_nft_pick"), reply_markup=nft_pick_kb(lang, theme, deal_id, items))
+            if not items:
+                await message.answer(t(lang, "deal_nft_need_item"))
+                return
+            await state.set_state(None)
+            await message.answer(t(lang, "deal_nft_pick"), reply_markup=nft_pick_kb(lang, theme, 0, items, action="nftpre"))
+            return
+        await _publish_listing(message.bot, message.from_user.id, state, db, lang, settings, theme)
         return
     try:
         await svc.set_description(db, data["deal_id"], message.from_user.id, text)
@@ -797,16 +991,58 @@ async def rub_ok_ask(call: CallbackQuery, callback_data: DealCB, db: Storage, la
     if deal is None or deal["seller_id"] != call.from_user.id or deal["status"] != DEAL_RUB_SENT:
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    await call.message.answer(t(lang, "deal_rub_confirm_ask"), reply_markup=confirm_kb(lang, theme, "rokgo", deal["id"]))
+    key = "deal_nft_confirm_ask" if is_nft_deal(deal) else "deal_rub_confirm_ask"
+    await call.message.answer(t(lang, key), reply_markup=confirm_kb(lang, theme, "rokgo", deal["id"]))
     await call.answer()
 
 
 @router.callback_query(DealCB.filter(F.a == "rokgo"))
-async def rub_ok_go(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+async def rub_ok_go(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton, bank):
     if callback_data.x != 1:
         await call.answer()
         return
     deal = await db.get_deal(callback_data.i)
+    if deal is not None and is_nft_deal(deal):
+        try:
+            await svc.confirm_nft_rub(db, callback_data.i, call.from_user.id)
+        except DealError as exc:
+            await call.answer(svc.err_text(lang, exc), show_alert=True)
+            return
+        deal = await db.get_deal(callback_data.i)
+        nft_note = "deal_nft_fail"
+        if deal["nft_id"]:
+            nft = await db.get_nft(deal["nft_id"])
+            result = await bank.transfer(nft, deal["buyer_id"]) if nft else "fail"
+            if result == "ok":
+                await db.touch_deal(deal["id"], nft_sent=1)
+                await db.set_nft_status(
+                    deal["nft_id"],
+                    NFT_TRANSFERRED,
+                    owner_id=deal["buyer_id"],
+                    deal_id=deal["id"],
+                )
+                nft_note = "deal_nft_sent"
+            elif result == "no_stars":
+                nft_note = "deal_nft_no_stars"
+        buyer = await db.get_user(deal["buyer_id"])
+        seller_text = t(lang, "deal_nft_done") + "\n" + t(lang, nft_note)
+        await paint(
+            call,
+            seller_text,
+            await home_kb(db, call.from_user.id, lang, theme),
+            screen="menu",
+            settings=settings,
+        )
+        if buyer:
+            buyer_lang = buyer["lang"] or "ru"
+            await call.bot.send_message(
+                deal["buyer_id"],
+                t(buyer_lang, "deal_nft_done_buyer") + "\n" + t(buyer_lang, nft_note),
+                reply_markup=await home_kb(db, deal["buyer_id"], buyer_lang, theme),
+            )
+            await _show_deal(call.bot, db, await db.get_deal(deal["id"]), deal["buyer_id"], buyer_lang, settings, theme, ton=ton)
+        await _show_deal(call.bot, db, await db.get_deal(deal["id"]), call.from_user.id, lang, settings, theme, event=call, ton=ton)
+        return
     try:
         amount, tx = await svc.confirm_rub(db, settings, ton, callback_data.i, call.from_user.id)
     except DealError as exc:
@@ -838,6 +1074,17 @@ async def rub_ok_go(call: CallbackQuery, callback_data: DealCB, db: Storage, lan
         t(buyer["lang"] or "ru", "deal_ton_sent_buyer", hash=tx),
         reply_markup=await home_kb(db, deal["buyer_id"], buyer["lang"] or "ru", theme),
     )
+
+
+@router.callback_query(DealCB.filter(F.a == "nftpre"))
+async def pre_pick_nft(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
+    await state.update_data(nft_id=callback_data.x)
+    data = await state.get_data()
+    if data.get("listing"):
+        await _publish_listing(call.bot, call.from_user.id, state, db, lang, settings, theme)
+        await call.answer()
+        return
+    await send_offer(call, state, db, lang, settings, theme)
 
 
 @router.callback_query(DealCB.filter(F.a == "nft"))
@@ -872,6 +1119,56 @@ async def set_nft(call: CallbackQuery, callback_data: DealCB, db: Storage, lang:
                 deal["buyer_id"],
                 t(buyer["lang"] or "ru", "deal_nft_set", title=title),
             )
+
+
+@router.callback_query(DealCB.filter(F.a == "pdf"))
+async def ask_pdf(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme):
+    deal = await db.get_deal(callback_data.i)
+    if deal is None or not is_nft_deal(deal) or deal["buyer_id"] != call.from_user.id or deal["status"] != DEAL_OPEN:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    if not deal["amount"]:
+        await call.answer(t(lang, "deal_pay_no_amount"), show_alert=True)
+        return
+    await state.set_state(DealFlow.receipt_pdf)
+    await state.update_data(deal_id=deal["id"])
+    seller = await db.get_user(deal["seller_id"])
+    req = seller_req_text(seller, lang)
+    await call.message.answer(
+        t(lang, "deal_nft_pdf_ask") + "\n\n" + req,
+        reply_markup=cancel_kb(lang, theme),
+    )
+    await call.answer()
+
+
+@router.message(DealFlow.receipt_pdf)
+async def save_pdf(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+    if is_cancel(message.text or ""):
+        return
+    if message.photo or not is_pdf_document(message):
+        await message.answer(t(lang, "deal_nft_pdf_only"))
+        return
+    data = await state.get_data()
+    file_id = message.document.file_id
+    try:
+        await svc.submit_receipt(db, int(data.get("deal_id") or 0), message.from_user.id, file_id)
+    except DealError as exc:
+        await message.answer(svc.err_text(lang, exc))
+        await state.clear()
+        return
+    await state.clear()
+    deal = await db.get_deal(int(data["deal_id"]))
+    await message.answer(t(lang, "deal_nft_pdf_sent"))
+    seller = await db.get_user(deal["seller_id"]) if deal else None
+    if seller:
+        seller_lang = seller["lang"] or "ru"
+        caption = t(seller_lang, "deal_nft_pdf_got", id=deal["id"])
+        try:
+            await message.bot.send_document(deal["seller_id"], document=file_id, caption=caption[:1024])
+        except Exception:
+            await message.bot.send_message(deal["seller_id"], caption)
+        await _show_deal(message.bot, db, deal, deal["seller_id"], seller_lang, settings, theme, ton=ton)
+    await _show_deal(message.bot, db, deal, message.from_user.id, lang, settings, theme, message=message, ton=ton)
 
 
 @router.callback_query(DealCB.filter(F.a == "pay"))
@@ -1012,7 +1309,7 @@ async def cancel_ask(call: CallbackQuery, callback_data: DealCB, db: Storage, la
         await call.answer(t(lang, "deal_cancel_denied"), show_alert=True)
         return
     if deal["status"] == DEAL_LISTED:
-        if deal["seller_id"] != call.from_user.id:
+        if listing_owner(deal) != call.from_user.id:
             await call.answer(t(lang, "error"), show_alert=True)
             return
         await svc.cancel_mutual(db, deal["id"])
@@ -1096,7 +1393,10 @@ async def dispute(call: CallbackQuery, callback_data: DealCB, state: FSMContext,
     if deal is None or call.from_user.id not in (deal["seller_id"], deal["buyer_id"]):
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    if deal["status"] not in {DEAL_PAID, DEAL_FUNDED, DEAL_RUB_SENT, DEAL_WAIT_TON}:
+    if deal["status"] not in {DEAL_PAID, DEAL_FUNDED, DEAL_RUB_SENT, DEAL_WAIT_TON, DEAL_REVIEW}:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    if deal["status"] == DEAL_REVIEW and not (is_nft_deal(deal) and not deal["nft_sent"]):
         await call.answer(t(lang, "error"), show_alert=True)
         return
     await state.set_state(DealFlow.dispute_reason)

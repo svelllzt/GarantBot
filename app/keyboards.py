@@ -203,23 +203,22 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int) -> InlineKeyboardMarkup
     kb = InlineKeyboardBuilder()
     status = deal["status"]
     seller = user_id == deal["seller_id"]
+    owner = int(deal["seller_id"] or 0) or int(deal["buyer_id"] or 0)
     ton = False
+    nft = False
     try:
         ton = deal["kind"] == "ton_rub"
     except (KeyError, IndexError, TypeError):
         ton = False
+    try:
+        nft = (deal["category"] or "") == "nft"
+    except (KeyError, IndexError, TypeError):
+        nft = False
     if status == DEAL_PENDING and seller:
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
-    if status == DEAL_LISTED and seller:
+    if status == DEAL_LISTED and user_id == owner:
         theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())
         theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
-        cat = ""
-        try:
-            cat = deal["category"] or ""
-        except (KeyError, IndexError, TypeError):
-            cat = ""
-        if cat == "nft":
-            theme.add(kb, "deal_set_nft", lang, callback_data=DealCB(a="nft", i=deal["id"]).pack())
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
     if status in {DEAL_OPEN, DEAL_PAID, DEAL_LISTED, DEAL_WAIT_TON, DEAL_FUNDED, DEAL_RUB_SENT}:
         theme.add(kb, "deal_manual_btn", lang, callback_data=DealCB(a="memo", i=deal["id"]).pack())
@@ -231,6 +230,14 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int) -> InlineKeyboardMarkup
                 theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
             else:
                 theme.add(kb, "deal_set_buy_ton", lang, callback_data=DealCB(a="buyaddr", i=deal["id"]).pack())
+        elif nft:
+            if seller:
+                if not deal["nft_id"]:
+                    theme.add(kb, "deal_set_nft", lang, callback_data=DealCB(a="nft", i=deal["id"]).pack())
+                theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())
+                theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
+            else:
+                theme.add(kb, "deal_pdf", lang, callback_data=DealCB(a="pdf", i=deal["id"]).pack())
         elif seller:
             theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())
             theme.add(kb, "deal_set_nft", lang, callback_data=DealCB(a="nft", i=deal["id"]).pack())
@@ -257,6 +264,8 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int) -> InlineKeyboardMarkup
     if status == DEAL_DISPUTE:
         theme.add(kb, "deal_dispute_thread", lang, callback_data=DealCB(a="disth", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute_evidence", lang, callback_data=DealCB(a="disev", i=deal["id"]).pack())
+    if status == DEAL_REVIEW and nft and not deal["nft_sent"]:
+        theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
     if status == DEAL_REVIEW and not seller:
         theme.add(kb, "deal_review_skip", lang, callback_data=DealCB(a="skip", i=deal["id"]).pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
@@ -280,14 +289,17 @@ def peer_cancel_kb(lang: str, theme: Theme, deal_id: int) -> InlineKeyboardMarku
     return kb.as_markup()
 
 
-def nft_pick_kb(lang: str, theme: Theme, deal_id: int, items) -> InlineKeyboardMarkup:
+def nft_pick_kb(lang: str, theme: Theme, deal_id: int, items, action: str = "nftset") -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for item in items:
         label = item["title"]
         if item["num"]:
             label = f"{label} #{item['num']}"
-        kb.button(text=label[:60], style="primary", callback_data=DealCB(a="nftset", i=deal_id, x=item["id"]).pack())
-    theme.add(kb, "btn_back", lang, callback_data=DealCB(a="open", i=deal_id).pack())
+        kb.button(text=label[:60], style="primary", callback_data=DealCB(a=action, i=deal_id, x=item["id"]).pack())
+    if deal_id:
+        theme.add(kb, "btn_back", lang, callback_data=DealCB(a="open", i=deal_id).pack())
+    else:
+        theme.add(kb, "btn_cancel", lang, callback_data=DealCB(a="abort").pack())
     kb.adjust(1)
     return kb.as_markup()
 
