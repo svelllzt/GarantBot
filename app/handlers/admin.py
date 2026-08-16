@@ -25,6 +25,7 @@ from app.keyboards import (
 )
 from app.catalog import label
 from app.media import SCREENS
+from app.services.bank import BankAccount
 from app.services import deals as svc
 from app.services.deals import DealError
 from app.states import AdminFlow
@@ -47,7 +48,7 @@ async def admin_entry(message: Message, lang: str, settings: Settings, theme: Th
 
 
 @router.callback_query(AdminCB.filter(F.a == "stats"))
-async def stats(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme):
+async def stats(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme, bank: BankAccount):
     if not _admin(settings, call.from_user.id):
         await call.answer(t(lang, "admin_only"), show_alert=True)
         return
@@ -72,6 +73,18 @@ async def stats(call: CallbackQuery, db: Storage, lang: str, settings: Settings,
                 amount=amount,
             )
         )
+    fee = bank.fee
+    stars_n = await bank.stars() if bank.online else None
+    if not bank.online:
+        stars_s = t(lang, "admin_stars_offline")
+        left = "—"
+    elif stars_n is None:
+        stars_s = t(lang, "admin_stars_unknown")
+        left = "—"
+    else:
+        stars_s = f"{stars_n}★"
+        left = str(stars_n // fee) if fee else "—"
+    pending_nft = len(await db.pending_nft_sends())
     await paint(
         call,
         t(
@@ -85,6 +98,11 @@ async def stats(call: CallbackQuery, db: Storage, lang: str, settings: Settings,
             volume=f"{info['volume']:.2f}",
             escrow=f"{info['escrow']:.2f}",
             currency=settings.currency,
+            bank=bank.mention,
+            stars=stars_s,
+            fee=fee,
+            nft_left=left,
+            pending_nft=pending_nft,
             by_status="\n".join(status_lines) or "—",
             by_cat="\n".join(cat_lines) or "—",
             recent="\n".join(recent_lines) or "—",
@@ -277,7 +295,7 @@ async def win_buyer(call: CallbackQuery, callback_data: AdminCB, db: Storage, la
         return
     deal = await db.get_deal(callback_data.i)
     await db.add_dispute_msg(deal["id"], call.from_user.id, t(lang, "admin_verdict_buyer"), is_admin=True)
-    await call.message.edit_text(t(lang, "admin_verdict_buyer"))
+    await paint(call, t(lang, "admin_verdict_buyer"), settings=settings)
     for uid in (deal["seller_id"], deal["buyer_id"]):
         if not uid:
             continue
@@ -305,7 +323,7 @@ async def win_seller(call: CallbackQuery, callback_data: AdminCB, db: Storage, l
         return
     deal = await db.get_deal(callback_data.i)
     await db.add_dispute_msg(deal["id"], call.from_user.id, t(lang, "admin_verdict_seller"), is_admin=True)
-    await call.message.edit_text(t(lang, "admin_verdict_seller"))
+    await paint(call, t(lang, "admin_verdict_seller"), settings=settings)
     for uid in (deal["seller_id"], deal["buyer_id"]):
         if not uid:
             continue
@@ -381,7 +399,7 @@ async def dep_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang:
         return
     await db.finish_deposit(deposit["id"], WALLET_DONE)
     await db.change_balance(deposit["user_id"], float(deposit["amount"]))
-    await call.message.edit_text(t(lang, "admin_dep_ok"))
+    await paint(call, t(lang, "admin_dep_ok"), settings=settings)
     try:
         user = await db.get_user(deposit["user_id"])
         await call.bot.send_message(
@@ -402,7 +420,7 @@ async def dep_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang:
         await call.answer(t(lang, "error"), show_alert=True)
         return
     await db.finish_deposit(deposit["id"], WALLET_REJECTED)
-    await call.message.edit_text(t(lang, "admin_dep_no"))
+    await paint(call, t(lang, "admin_dep_no"), settings=settings)
     await call.answer()
 
 
@@ -415,7 +433,7 @@ async def wd_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: 
         await call.answer(t(lang, "error"), show_alert=True)
         return
     await db.finish_withdraw(item["id"], WALLET_DONE)
-    await call.message.edit_text(t(lang, "admin_wd_ok"))
+    await paint(call, t(lang, "admin_wd_ok"), settings=settings)
     await call.answer()
 
 
@@ -429,7 +447,7 @@ async def wd_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: 
         return
     await db.finish_withdraw(item["id"], WALLET_REJECTED)
     await db.change_balance(item["user_id"], float(item["amount"]))
-    await call.message.edit_text(t(lang, "admin_wd_no"))
+    await paint(call, t(lang, "admin_wd_no"), settings=settings)
     await call.answer()
 
 
@@ -437,8 +455,7 @@ async def wd_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: 
 async def admin_home(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
     if not _admin(settings, call.from_user.id):
         return
-    await call.message.edit_text(t(lang, "admin_menu"), reply_markup=admin_kb(lang, theme))
-    await call.answer()
+    await paint(call, t(lang, "admin_menu"), admin_kb(lang, theme), settings=settings)
 
 
 def _btn_card(lang: str, theme: Theme, key: str) -> str:
@@ -460,8 +477,7 @@ def _btn_card(lang: str, theme: Theme, key: str) -> str:
 async def btn_list(call: CallbackQuery, callback_data: BtnCB, lang: str, settings: Settings, theme: Theme):
     if not _admin(settings, call.from_user.id):
         return
-    await call.message.edit_text(t(lang, "admin_btn_pick"), reply_markup=buttons_list_kb(lang, theme, callback_data.p))
-    await call.answer()
+    await paint(call, t(lang, "admin_btn_pick"), buttons_list_kb(lang, theme, callback_data.p), settings=settings)
 
 
 @router.callback_query(BtnCB.filter(F.a == "open"))
@@ -472,19 +488,19 @@ async def btn_open(call: CallbackQuery, callback_data: BtnCB, lang: str, setting
     if key not in KEYS:
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    await call.message.edit_text(_btn_card(lang, theme, key), reply_markup=button_edit_kb(lang, theme, key, callback_data.p))
-    await call.answer()
+    await paint(call, _btn_card(lang, theme, key), button_edit_kb(lang, theme, key, callback_data.p), settings=settings)
 
 
 @router.callback_query(BtnCB.filter(F.a == "color"))
 async def btn_color(call: CallbackQuery, callback_data: BtnCB, lang: str, settings: Settings, theme: Theme):
     if not _admin(settings, call.from_user.id):
         return
-    await call.message.edit_text(
+    await paint(
+        call,
         _btn_card(lang, theme, callback_data.k),
-        reply_markup=button_style_kb(lang, theme, callback_data.k, callback_data.p),
+        button_style_kb(lang, theme, callback_data.k, callback_data.p),
+        settings=settings,
     )
-    await call.answer()
 
 
 @router.callback_query(BtnCB.filter(F.a == "setst"))
@@ -495,11 +511,12 @@ async def btn_set_style(call: CallbackQuery, callback_data: BtnCB, db: Storage, 
     style = None if callback_data.s in {"-", "none"} else callback_data.s
     await db.patch_button(key, style="" if style is None else style)
     theme = Theme(await db.button_map())
-    await call.message.edit_text(
+    await paint(
+        call,
         t(lang, "admin_btn_saved") + "\n\n" + _btn_card(lang, theme, key),
-        reply_markup=button_edit_kb(lang, theme, key, callback_data.p),
+        button_edit_kb(lang, theme, key, callback_data.p),
+        settings=settings,
     )
-    await call.answer()
 
 
 @router.callback_query(BtnCB.filter(F.a == "reset"))
@@ -508,11 +525,12 @@ async def btn_reset(call: CallbackQuery, callback_data: BtnCB, db: Storage, lang
         return
     await db.reset_button(callback_data.k)
     theme = Theme(await db.button_map())
-    await call.message.edit_text(
+    await paint(
+        call,
         t(lang, "admin_btn_saved") + "\n\n" + _btn_card(lang, theme, callback_data.k),
-        reply_markup=button_edit_kb(lang, theme, callback_data.k, callback_data.p),
+        button_edit_kb(lang, theme, callback_data.k, callback_data.p),
+        settings=settings,
     )
-    await call.answer()
 
 
 @router.callback_query(BtnCB.filter(F.a == "name"))

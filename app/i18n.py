@@ -182,6 +182,8 @@ RU = {
     "deal_paid_seller": "Покупатель оплатил сделку #{id}. Передайте товар.",
     "deal_nft_sent": "NFT отправлен покупателю через банковский аккаунт.",
     "deal_nft_fail": "Не удалось отправить NFT. Откройте спор, администратор разберёт вручную.",
+    "deal_nft_no_stars": "NFT пока не отправлен: на банковском аккаунте не хватает Stars. Как пополнят — уйдёт автоматически.",
+    "deal_nft_retry_ok": "NFT по сделке #{id} отправлен: {title}.",
     "deal_confirm_ask": "Подтверждаете получение и валидность товара?",
     "deal_done_buyer": "Сделка закрыта. Можете оставить отзыв продавцу.",
     "deal_done_seller": "Сделка закрыта. На баланс зачислено {amount} {currency} (комиссия {commission}%).",
@@ -249,7 +251,7 @@ RU = {
     "admin_disputes": "Споры",
     "admin_deposits": "Пополнения",
     "admin_withdraws": "Выводы",
-    "admin_stats_text": "Пользователей: {users}\nЗакрытых сделок: {deals}\nОборот: {volume} {currency}",
+    "admin_stats_text": "Пользователей: {users}\nЗакрытых сделок: {deals}\nОборот: {volume} {currency}\nБанк ★: {stars}",
     "admin_ask_id": "Telegram ID пользователя.",
     "admin_ask_balance": "Новый баланс в {currency}.",
     "admin_ask_mail": "Текст рассылки. HTML можно.",
@@ -391,11 +393,23 @@ RU = {
         "Открытых споров: {disputes}\n"
         "Оборот закрытых: {volume} {currency}\n"
         "Сейчас в гаранте: {escrow} {currency}\n\n"
+        "Банк: {bank}\n"
+        "Stars: {stars}\n"
+        "Передача NFT: {fee}★, хватит на {nft_left}\n"
+        "Ожидают отправки NFT: {pending_nft}\n\n"
         "По статусам:\n{by_status}\n\n"
         "По категориям:\n{by_cat}\n\n"
         "Последние:\n{recent}"
     ),
     "admin_deal_line": "#{id} · {status} · {cat} · {amount}",
+    "admin_stars_offline": "офлайн (нет session)",
+    "admin_stars_unknown": "не удалось прочитать",
+    "admin_stars_low": (
+        "На банковском аккаунте {stars}★, порог {min}★.\n"
+        "Передача NFT стоит ≈{fee}★. Пополните Stars на этом аккаунте — бот сам дошлёт подарки.\n"
+        "Ожидают отправки: {pending}."
+    ),
+    "admin_nft_no_stars": "Сделка #{id}: не хватило Stars на передачу NFT. Баланс {stars}★, нужно {fee}★.",
 }
 
 EN = {
@@ -580,6 +594,8 @@ EN = {
     "deal_paid_seller": "The buyer paid deal #{id}. Deliver the item.",
     "deal_nft_sent": "NFT sent to the buyer via the bank account.",
     "deal_nft_fail": "NFT transfer failed. Open a dispute so an admin can handle it.",
+    "deal_nft_no_stars": "NFT not sent yet: the bank account is out of Stars. It will go automatically after a top-up.",
+    "deal_nft_retry_ok": "NFT for deal #{id} was sent: {title}.",
     "deal_confirm_ask": "Confirm that you received a valid item?",
     "deal_done_buyer": "Deal closed. You can leave a review for the seller.",
     "deal_done_seller": "Deal closed. Credited {amount} {currency} (fee {commission}%).",
@@ -647,7 +663,7 @@ EN = {
     "admin_disputes": "Disputes",
     "admin_deposits": "Deposits",
     "admin_withdraws": "Withdrawals",
-    "admin_stats_text": "Users: {users}\nClosed deals: {deals}\nVolume: {volume} {currency}",
+    "admin_stats_text": "Users: {users}\nClosed deals: {deals}\nVolume: {volume} {currency}\nBank ★: {stars}",
     "admin_ask_id": "User Telegram ID.",
     "admin_ask_balance": "New balance in {currency}.",
     "admin_ask_mail": "Broadcast text. HTML is fine.",
@@ -789,11 +805,23 @@ EN = {
         "Open disputes: {disputes}\n"
         "Closed volume: {volume} {currency}\n"
         "In escrow now: {escrow} {currency}\n\n"
+        "Bank: {bank}\n"
+        "Stars: {stars}\n"
+        "NFT transfer: {fee}★, enough for {nft_left}\n"
+        "Pending NFT sends: {pending_nft}\n\n"
         "By status:\n{by_status}\n\n"
         "By category:\n{by_cat}\n\n"
         "Recent:\n{recent}"
     ),
     "admin_deal_line": "#{id} · {status} · {cat} · {amount}",
+    "admin_stars_offline": "offline (no session)",
+    "admin_stars_unknown": "unavailable",
+    "admin_stars_low": (
+        "Bank account has {stars}★, threshold {min}★.\n"
+        "An NFT transfer costs ≈{fee}★. Top up Stars on that account — the bot will send pending gifts itself.\n"
+        "Waiting to send: {pending}."
+    ),
+    "admin_nft_no_stars": "Deal #{id}: not enough Stars to transfer the NFT. Balance {stars}★, need {fee}★.",
 }
 
 LOCALES = {"ru": RU, "en": EN}
@@ -802,6 +830,9 @@ LOCALES = {"ru": RU, "en": EN}
 def t(lang: str, key: str, **kwargs: Any) -> str:
     table = LOCALES.get(lang) or RU
     text = table.get(key) or RU.get(key) or key
-    if kwargs:
+    if not kwargs:
+        return text
+    try:
         return text.format(**kwargs)
-    return text
+    except (KeyError, IndexError, ValueError):
+        return text

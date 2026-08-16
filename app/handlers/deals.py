@@ -775,7 +775,7 @@ async def rub_pay_go(call: CallbackQuery, callback_data: DealCB, db: Storage, la
     deal = await db.get_deal(callback_data.i)
     seller = await db.get_user(deal["seller_id"])
     seller_lang = seller["lang"] or "ru"
-    await call.message.edit_text(t(lang, "deal_rub_marked"))
+    await paint(call, t(lang, "deal_rub_marked"), settings=settings)
     await call.bot.send_message(
         deal["seller_id"],
         t(seller_lang, "deal_rub_marked_seller", id=deal["id"]),
@@ -820,9 +820,12 @@ async def rub_ok_go(call: CallbackQuery, callback_data: DealCB, db: Storage, lan
         return
     deal = await db.get_deal(callback_data.i)
     buyer = await db.get_user(deal["buyer_id"])
-    await call.message.edit_text(
+    await paint(
+        call,
         t(lang, "deal_ton_sent", address=deal["buyer_ton"], hash=tx),
-        reply_markup=await home_kb(db, call.from_user.id, lang, theme),
+        await home_kb(db, call.from_user.id, lang, theme),
+        screen="menu",
+        settings=settings,
     )
     await call.bot.send_message(
         deal["buyer_id"],
@@ -833,16 +836,18 @@ async def rub_ok_go(call: CallbackQuery, callback_data: DealCB, db: Storage, lan
 
 
 @router.callback_query(DealCB.filter(F.a == "nft"))
-async def pick_nft(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, theme: Theme):
+async def pick_nft(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, theme: Theme, settings: Settings):
     items = await db.nfts_of(call.from_user.id, NFT_AVAILABLE)
     if not items:
         await call.answer(t(lang, "deal_nft_empty"), show_alert=True)
         return
-    await call.message.edit_text(
+    await paint(
+        call,
         t(lang, "deal_nft_pick"),
-        reply_markup=nft_pick_kb(lang, theme, callback_data.i, items),
+        nft_pick_kb(lang, theme, callback_data.i, items),
+        screen="deal",
+        settings=settings,
     )
-    await call.answer()
 
 
 @router.callback_query(DealCB.filter(F.a == "nftset"))
@@ -878,18 +883,22 @@ async def pay_deal(call: CallbackQuery, callback_data: DealCB, db: Storage, lang
     nft_note = None
     if deal["nft_id"]:
         nft = await db.get_nft(deal["nft_id"])
-        sent = await bank.transfer(nft, deal["buyer_id"]) if nft else False
-        if sent:
+        result = await bank.transfer(nft, deal["buyer_id"]) if nft else "fail"
+        if result == "ok":
             await db.touch_deal(deal["id"], nft_sent=1)
             nft_note = "deal_nft_sent"
+        elif result == "no_stars":
+            nft_note = "deal_nft_no_stars"
         else:
             nft_note = "deal_nft_fail"
     seller = await db.get_user(deal["seller_id"])
     seller_lang = seller["lang"] or "ru"
-    await call.message.edit_text(t(lang, "deal_paid"))
     if nft_note:
-        await call.message.answer(t(lang, nft_note))
-    await _show_deal(call.bot, db, await db.get_deal(deal["id"]), call.from_user.id, lang, settings, theme, message=call.message)
+        try:
+            await call.message.answer(t(lang, nft_note))
+        except Exception:
+            pass
+    await _show_deal(call.bot, db, await db.get_deal(deal["id"]), call.from_user.id, lang, settings, theme, event=call)
     await call.bot.send_message(deal["seller_id"], t(seller_lang, "deal_paid_seller", id=deal["id"]))
     if nft_note:
         await call.bot.send_message(deal["seller_id"], t(seller_lang, nft_note))
@@ -929,7 +938,7 @@ async def confirm_go(
     seller_lang = seller["lang"] or "ru"
     await state.set_state(DealFlow.review)
     await state.update_data(deal_id=deal["id"])
-    await call.message.edit_text(t(lang, "deal_done_buyer"))
+    await paint(call, t(lang, "deal_done_buyer"), settings=settings)
     await call.message.answer(t(lang, "deal_review_ask"), reply_markup=skip_review_kb(lang, theme, deal["id"]))
     await call.bot.send_message(
         deal["seller_id"],
@@ -972,7 +981,7 @@ async def save_review(message: Message, state: FSMContext, db: Storage, lang: st
 async def skip_review(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme):
     await svc.close_after_review(db, callback_data.i)
     await state.clear()
-    await call.message.edit_text(t(lang, "deal_done_buyer"))
+    await paint(call, t(lang, "deal_done_buyer"))
     await call.message.answer(t(lang, "menu"), reply_markup=await home_kb(db, call.from_user.id, lang, theme))
     await call.answer()
 
@@ -1004,7 +1013,7 @@ async def cancel_ask(call: CallbackQuery, callback_data: DealCB, db: Storage, la
         await svc.decline(db, deal["id"], call.from_user.id)
         other = deal["seller_id"] if call.from_user.id == deal["buyer_id"] else deal["buyer_id"]
         other_user = await db.get_user(other)
-        await call.message.edit_text(t(lang, "deal_cancel_ok"))
+        await paint(call, t(lang, "deal_cancel_ok"), settings=settings)
         await call.bot.send_message(other, t(other_user["lang"] or "ru", "deal_declined_peer"), reply_markup=await home_kb(db, other, other_user["lang"] or "ru", theme))
         await call.message.answer(t(lang, "menu"), reply_markup=await home_kb(db, call.from_user.id, lang, theme))
         await call.answer()
@@ -1025,7 +1034,7 @@ async def cancel_send(call: CallbackQuery, callback_data: DealCB, db: Storage, l
     other = deal["seller_id"] if call.from_user.id == deal["buyer_id"] else deal["buyer_id"]
     other_user = await db.get_user(other)
     other_lang = other_user["lang"] or "ru"
-    await call.message.edit_text(t(lang, "deal_cancel_sent"))
+    await paint(call, t(lang, "deal_cancel_sent"))
     await call.bot.send_message(
         other,
         t(other_lang, "deal_cancel_ask"),

@@ -25,6 +25,10 @@ api_id =
 api_hash =
 session =
 username =
+; Сколько ★ списывает Telegram за передачу уникального подарка (обычно 25).
+transfer_stars = 25
+; Если баланс ниже — алерт админам. Держите запас: ожидающие NFT × transfer_stars.
+min_stars = 50
 
 [ton]
 address =

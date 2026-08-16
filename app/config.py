@@ -28,6 +28,8 @@ FIELDS: dict[tuple[str, str], str] = {
     ("bank", "api_hash"): "bank_api_hash",
     ("bank", "session"): "bank_session",
     ("bank", "username"): "bank_username",
+    ("bank", "transfer_stars"): "bank_transfer_stars",
+    ("bank", "min_stars"): "bank_min_stars",
     ("ton", "address"): "ton_address",
     ("ton", "api_key"): "ton_api_key",
     ("ton", "rate"): "ton_rate",
@@ -56,6 +58,8 @@ DEFAULTS: dict[str, Any] = {
     "bank_api_hash": "",
     "bank_session": "",
     "bank_username": "",
+    "bank_transfer_stars": 25,
+    "bank_min_stars": 50,
     "ton_address": "",
     "ton_api_key": "",
     "ton_rate": 0.0,
@@ -80,6 +84,8 @@ ENV_TO_ATTR = {
     "BANK_API_HASH": "bank_api_hash",
     "BANK_SESSION": "bank_session",
     "BANK_USERNAME": "bank_username",
+    "BANK_TRANSFER_STARS": "bank_transfer_stars",
+    "BANK_MIN_STARS": "bank_min_stars",
     "TON_ADDRESS": "ton_address",
     "TON_API_KEY": "ton_api_key",
     "TON_RATE": "ton_rate",
@@ -278,6 +284,8 @@ class Settings:
     bank_api_hash: str
     bank_session: str
     bank_username: str
+    bank_transfer_stars: int
+    bank_min_stars: int
     ton_address: str
     ton_api_key: str
     ton_rate: float

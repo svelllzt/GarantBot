@@ -299,6 +299,13 @@ async def complete(db: Storage, settings: Settings, deal_id: int, user_id: int) 
     payout = seller_payout(deal["amount"], settings.commission_percent)
     await db.change_balance(deal["seller_id"], payout)
     await db.bump_deals(deal["seller_id"], deal["buyer_id"])
+    if deal["nft_id"] and deal["nft_sent"]:
+        await db.set_nft_status(
+            deal["nft_id"],
+            NFT_TRANSFERRED,
+            owner_id=deal["buyer_id"],
+            deal_id=deal_id,
+        )
     await db.touch_deal(deal_id, status=DEAL_CLOSED)
     return payout
 

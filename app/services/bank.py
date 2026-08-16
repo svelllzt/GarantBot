@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Optional
 
@@ -9,10 +10,13 @@ from pyrogram.raw import functions, types
 
 from app.config import Settings
 from app.i18n import t
-from app.storage import Storage
+from app.storage import DEAL_CLOSED, DEAL_PAID, DEAL_REVIEW, NFT_TRANSFERRED, Storage
 from app.util import nft_title
 
 log = logging.getLogger("bank")
+
+WATCH_SEC = 180
+STARS_TTL = 20
 
 
 def _user_id(peer: Any) -> Optional[int]:
@@ -35,6 +39,34 @@ def _gift_meta(gift: Any) -> dict[str, Any]:
     }
 
 
+def _err_text(exc: BaseException) -> str:
+    return str(exc).upper()
+
+
+def _stars_int(balance: Any) -> Optional[int]:
+    if balance is None:
+        return None
+    if isinstance(balance, int):
+        return int(balance)
+    amount = getattr(balance, "amount", None)
+    if amount is None:
+        return None
+    return int(amount)
+
+
+def _invoice_stars(form: Any) -> Optional[int]:
+    invoice = getattr(form, "invoice", None)
+    if invoice is None:
+        return None
+    currency = (getattr(invoice, "currency", "") or "").upper()
+    if currency and currency != "XTR":
+        return None
+    total = 0
+    for price in getattr(invoice, "prices", None) or []:
+        total += int(getattr(price, "amount", 0) or 0)
+    return total if total > 0 else None
+
+
 class BankAccount:
     def __init__(self, settings: Settings, db: Storage, bot) -> None:
         self.settings = settings
@@ -42,6 +74,11 @@ class BankAccount:
         self.bot = bot
         self.client: Optional[Client] = None
         self.me = None
+        self._stars: Optional[int] = None
+        self._stars_at = 0.0
+        self._low_alerted = False
+        self._watch_task: Optional[asyncio.Task] = None
+        self._lock = asyncio.Lock()
 
     @property
     def mention(self) -> str:
@@ -50,6 +87,20 @@ class BankAccount:
         if self.me and self.me.username:
             return "@" + self.me.username
         return "—"
+
+    @property
+    def online(self) -> bool:
+        return self.client is not None
+
+    @property
+    def fee(self) -> int:
+        n = int(self.settings.bank_transfer_stars or 0)
+        return n if n > 0 else 25
+
+    @property
+    def min_stars(self) -> int:
+        n = int(self.settings.bank_min_stars or 0)
+        return n if n > 0 else 50
 
     def enabled(self) -> bool:
         return bool(
@@ -87,11 +138,47 @@ class BankAccount:
             except Exception:
                 log.exception("failed to write [bank] username")
         log.info("bank account @%s id=%s", self.me.username, self.me.id)
+        await self.refresh_stars()
+        await self._maybe_alert_stars()
+        self._watch_task = asyncio.create_task(self._watch(), name="bank-stars")
 
     async def stop(self) -> None:
+        task = self._watch_task
+        self._watch_task = None
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         if self.client is not None:
             await self.client.stop()
             self.client = None
+
+    async def stars(self, force: bool = False) -> Optional[int]:
+        if (
+            not force
+            and self._stars is not None
+            and (asyncio.get_running_loop().time() - self._stars_at) < STARS_TTL
+        ):
+            return self._stars
+        return await self.refresh_stars()
+
+    async def refresh_stars(self) -> Optional[int]:
+        if self.client is None:
+            return None
+        try:
+            status = await self.client.invoke(functions.payments.GetStarsStatus(peer=types.InputPeerSelf()))
+            amount = _stars_int(getattr(status, "balance", None))
+            if amount is None:
+                return self._stars
+            self._stars = amount
+            self._stars_at = asyncio.get_running_loop().time()
+            log.info("bank stars=%s", amount)
+            return amount
+        except Exception:
+            log.exception("stars status failed")
+            return self._stars
 
     async def _on_raw(self, client, update, users, chats) -> None:
         msg = None
@@ -146,31 +233,154 @@ class BankAccount:
         except Exception:
             log.exception("failed to notify %s about gift", sender)
 
-    async def transfer(self, nft, to_user_id: int) -> bool:
-        if self.client is None or not nft["msg_id"]:
-            return False
+    async def transfer(self, nft, to_user_id: int) -> str:
+        async with self._lock:
+            return await self._transfer(nft, to_user_id)
+
+    async def _transfer(self, nft, to_user_id: int) -> str:
+        if nft is None or not nft["msg_id"]:
+            return "fail"
+        if self.client is None:
+            return "offline"
         gift_cls = getattr(types, "InputSavedStarGiftUser", None)
         transfer_fn = getattr(functions.payments, "TransferStarGift", None)
         if gift_cls is None or transfer_fn is None:
-            return False
+            return "fail"
         try:
             peer = await self.client.resolve_peer(to_user_id)
             stargift = gift_cls(msg_id=int(nft["msg_id"]))
             try:
                 await self.client.invoke(transfer_fn(stargift=stargift, to_id=peer))
-                return True
+                return "ok"
             except Exception as exc:
-                if "PAYMENT_REQUIRED" not in str(exc):
+                if "PAYMENT_REQUIRED" not in _err_text(exc):
                     raise
                 invoice_cls = getattr(types, "InputInvoiceStarGiftTransfer", None)
                 get_form = getattr(functions.payments, "GetPaymentForm", None)
                 send_form = getattr(functions.payments, "SendStarsForm", None)
                 if not invoice_cls or not get_form or not send_form:
-                    return False
+                    return "fail"
                 invoice = invoice_cls(stargift=stargift, to_id=peer)
                 form = await self.client.invoke(get_form(invoice=invoice))
-                await self.client.invoke(send_form(form_id=form.form_id, invoice=invoice))
-                return True
+                fee = _invoice_stars(form) or self.fee
+                stars = await self.stars()
+                if stars is not None and stars < fee:
+                    await self._alert_no_stars(fee, stars)
+                    return "no_stars"
+                try:
+                    await self.client.invoke(send_form(form_id=form.form_id, invoice=invoice))
+                except Exception as pay_exc:
+                    if "BALANCE_TOO_LOW" in _err_text(pay_exc):
+                        await self.refresh_stars()
+                        await self._alert_no_stars(fee, self._stars)
+                        return "no_stars"
+                    raise
+                if self._stars is not None:
+                    self._stars = max(0, self._stars - fee)
+                asyncio.create_task(self._refresh_silent())
+                return "ok"
         except Exception:
             log.exception("gift transfer failed msg_id=%s to=%s", nft["msg_id"], to_user_id)
-            return False
+            return "fail"
+
+    async def _refresh_silent(self) -> None:
+        try:
+            await self.refresh_stars()
+            await self._maybe_alert_stars()
+        except Exception:
+            log.exception("silent stars refresh")
+
+    async def _watch(self) -> None:
+        while True:
+            try:
+                await asyncio.sleep(WATCH_SEC)
+                if self.client is None:
+                    continue
+                await self.refresh_stars()
+                await self._maybe_alert_stars()
+                await self._retry_pending()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("bank watcher")
+
+    async def _retry_pending(self) -> None:
+        if self.client is None:
+            return
+        stars = await self.stars()
+        if stars is not None and stars < self.fee:
+            return
+        pending = await self.db.pending_nft_sends()
+        for deal in pending:
+            fresh = await self.db.get_deal(deal["id"])
+            if fresh is None or fresh["nft_sent"] or not fresh["nft_id"] or not fresh["buyer_id"]:
+                continue
+            if fresh["status"] not in {DEAL_PAID, DEAL_REVIEW, DEAL_CLOSED}:
+                continue
+            nft = await self.db.get_nft(fresh["nft_id"])
+            result = await self.transfer(nft, fresh["buyer_id"])
+            if result == "ok":
+                await self.db.touch_deal(fresh["id"], nft_sent=1)
+                if fresh["status"] in {DEAL_CLOSED, DEAL_REVIEW}:
+                    await self.db.set_nft_status(
+                        fresh["nft_id"],
+                        NFT_TRANSFERRED,
+                        owner_id=fresh["buyer_id"],
+                        deal_id=fresh["id"],
+                    )
+                await self._notify_nft_sent(fresh, nft)
+            elif result == "no_stars":
+                break
+
+    async def _notify_nft_sent(self, deal, nft) -> None:
+        if self.bot is None:
+            return
+        title = nft_title(nft) if nft is not None else ""
+        for uid in (deal["buyer_id"], deal["seller_id"]):
+            if not uid:
+                continue
+            user = await self.db.get_user(uid)
+            if user is None:
+                continue
+            try:
+                await self.bot.send_message(
+                    uid,
+                    t(user["lang"] or "ru", "deal_nft_retry_ok", id=deal["id"], title=title),
+                )
+            except Exception:
+                log.exception("failed to notify %s about nft retry", uid)
+
+    async def _maybe_alert_stars(self) -> None:
+        stars = self._stars
+        if stars is None:
+            return
+        if stars >= self.min_stars:
+            self._low_alerted = False
+            return
+        pending = await self.db.pending_nft_sends()
+        await self._alert_no_stars(self.fee, stars, pending=len(pending))
+
+    async def _alert_no_stars(self, fee: int, stars: Optional[int], pending: Optional[int] = None) -> None:
+        if self._low_alerted:
+            return
+        self._low_alerted = True
+        if pending is None:
+            rows = await self.db.pending_nft_sends()
+            pending = len(rows)
+        await self._notify_admins(
+            "admin_stars_low",
+            stars=stars if stars is not None else "—",
+            min=self.min_stars,
+            fee=fee,
+            pending=pending,
+        )
+
+    async def _notify_admins(self, key: str, **kwargs: Any) -> None:
+        if self.bot is None:
+            return
+        text = t("ru", key, **kwargs)
+        for aid in self.settings.admins:
+            try:
+                await self.bot.send_message(aid, text)
+            except Exception:
+                log.exception("failed to alert admin %s", aid)

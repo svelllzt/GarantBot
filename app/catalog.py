@@ -36,17 +36,17 @@ _MANUAL = {
             "<b>Памятка · NFT-подарок</b>\n\n"
             "1. Покупатель оплачивает сделку с баланса бота. Пока товар не подтверждён, деньги у гаранта.\n"
             "2. Продавец заранее кладёт уникальный подарок на банковский аккаунт бота — он появится в инвентаре.\n"
-            "3. В сделке продавец прикрепляет NFT. После оплаты бот сам переводит подарок покупателю.\n"
+            "3. В сделке продавец прикрепляет NFT. После оплаты бот сам переводит подарок покупателю (на банке должны быть Stars, обычно 25★).\n"
             "4. Не подтверждайте получение, пока подарок не появился у вас в Telegram.\n"
-            "5. Если перевод не прошёл — откройте спор, не закрывайте сделку."
+            "5. Если Stars не хватило, бот дошлёт подарок сам после пополнения. Иначе откройте спор."
         ),
         "en": (
             "<b>Memo · NFT gift</b>\n\n"
             "1. The buyer pays from the bot balance. Funds stay in escrow until confirmation.\n"
             "2. The seller sends the unique gift to the bot bank account first so it appears in inventory.\n"
-            "3. The seller attaches the NFT. After payment the bot transfers it to the buyer.\n"
+            "3. The seller attaches the NFT. After payment the bot transfers it to the buyer (the bank account needs Stars, usually 25★).\n"
             "4. Do not confirm until the gift is in your Telegram account.\n"
-            "5. If the transfer fails, open a dispute."
+            "5. If Stars run out, the bot will send the gift after a top-up. Otherwise open a dispute."
         ),
     },
     "acc_rbx": {

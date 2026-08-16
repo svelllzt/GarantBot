@@ -50,6 +50,22 @@ async def main() -> None:
         assert listed["buyer_id"] == 0
         feed = await db.listed_deals()
         assert feed and feed[0]["id"] == lid
+        nft_id = await db.add_nft(
+            1,
+            gift_id="g1",
+            slug="slug",
+            title="Gift",
+            num=7,
+            msg_id=42,
+            from_user_id=1,
+            is_unique=True,
+        )
+        paid_id = await db.create_deal(1, 2, category="nft", title="gift nft")
+        await db.touch_deal(paid_id, nft_id=nft_id, status="paid", amount=10)
+        pending = await db.pending_nft_sends()
+        assert any(r["id"] == paid_id for r in pending)
+        await db.touch_deal(paid_id, nft_sent=1)
+        assert not any(r["id"] == paid_id for r in await db.pending_nft_sends())
         await db.set_banned(1, True, "test")
         banned = await db.banned_users()
         assert banned and banned[0]["user_id"] == 1
@@ -70,7 +86,7 @@ async def main() -> None:
         assert info["users"] >= 2
         assert "deals" in info
         deal_cols = await db._columns("deals")
-        for name in ("category", "title", "channel_msg_id", "kind", "dispute_reason", "dispute_by"):
+        for name in ("category", "title", "channel_msg_id", "kind", "dispute_reason", "dispute_by", "nft_sent"):
             assert name in deal_cols, name
         await db.close()
         print("ok")

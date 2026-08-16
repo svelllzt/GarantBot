@@ -422,6 +422,17 @@ class Storage:
             (limit,),
         )
 
+    async def pending_nft_sends(self) -> list[aiosqlite.Row]:
+        return await self.fetchall(
+            """
+            SELECT * FROM deals
+            WHERE nft_id IS NOT NULL AND nft_sent = 0 AND buyer_id != 0
+              AND status IN (?, ?, ?)
+            ORDER BY id
+            """,
+            (DEAL_PAID, DEAL_REVIEW, DEAL_CLOSED),
+        )
+
     async def create_deal(
         self,
         seller_id: int,
