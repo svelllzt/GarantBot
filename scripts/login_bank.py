@@ -4,13 +4,12 @@ import json
 import sys
 from pathlib import Path
 
-from pyrogram import Client
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.config import get_settings
+from app.pyro import Client
 
 
 def _help(path: Path) -> str:
@@ -34,6 +33,11 @@ def _help(path: Path) -> str:
 Юзер-аккаунт для NFT-банка (нужен телефон один раз):
 
       python scripts/login_bank.py --user
+
+Нужен пакет pyrofork, не pyrogram. Если падает event loop:
+
+      pip uninstall -y pyrogram
+      pip install -U "pyrofork>=2.3.45"
 
 api_id и api_hash всё равно нужны в [bank] — https://my.telegram.org
 """.strip()
@@ -188,6 +192,9 @@ def main() -> None:
         settings.patch("bank_session", session)
         print(f"patched {settings.path} [bank] session")
         return
+    import pyrogram
+
+    print(f"pyrofork {getattr(pyrogram, '__version__', '?')}")
     session, username, user_id = asyncio.run(_login_user(settings))
     _save(settings, session, username, user_id)
 

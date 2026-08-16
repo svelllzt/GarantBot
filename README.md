@@ -11,6 +11,15 @@ pip install -r requirements.txt
 cp config.ini.example config.ini
 ```
 
+Нужен **pyrofork**, не пакет `pyrogram`. Если стоит обычный pyrogram, логин банка падает на Python 3.12+ (`There is no current event loop`). Исправление:
+
+```bash
+pip uninstall -y pyrogram
+pip install -U "pyrofork>=2.3.45"
+```
+
+Удобнее Python 3.11–3.13. На 3.14 тоже должно работать с pyrofork.
+
 В `config.ini` заполните `[bot] token` и `admin_ids`. Если рядом лежит старый `.env`, при первом запуске он сам превратится в `config.ini`.
 
 ```bash

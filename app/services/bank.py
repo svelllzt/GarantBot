@@ -4,9 +4,7 @@ import asyncio
 import logging
 from typing import Any, Optional
 
-from pyrogram import Client
-from pyrogram.handlers import RawUpdateHandler
-from pyrogram.raw import functions, types
+from app.pyro import Client, RawUpdateHandler, functions, types
 
 from app.config import Settings
 from app.i18n import t
