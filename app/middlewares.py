@@ -1,7 +1,7 @@
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
-from aiogram.types import CallbackQuery, Message, TelegramObject
+from aiogram.types import CallbackQuery, Message, TelegramObject, Update
 
 from app.buttons import Theme
 from app.config import Settings
@@ -26,6 +26,21 @@ def support_link(settings: Settings) -> str:
     return ""
 
 
+def _from_user(event: TelegramObject, data: dict[str, Any]):
+    user = data.get("event_from_user")
+    if user is not None:
+        return user
+    if isinstance(event, Update):
+        return event.event_from_user
+    return getattr(event, "from_user", None)
+
+
+def _inner(event: TelegramObject):
+    if isinstance(event, Update):
+        return event.event
+    return event
+
+
 class ContextMiddleware(BaseMiddleware):
     def __init__(self, db: Storage, settings: Settings, bank, ton) -> None:
         self.db = db
@@ -39,17 +54,18 @@ class ContextMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        user = None
-        if isinstance(event, (Message, CallbackQuery)):
-            user = event.from_user
-        if user is None or user.is_bot:
-            return await handler(event, data)
-
-        row = await self.db.upsert_user(user.id, user.username, user.first_name or "")
         data["db"] = self.db
         data["settings"] = self.settings
         data["bank"] = self.bank
         data["ton"] = self.ton
+        data.setdefault("lang", "ru")
+
+        user = _from_user(event, data)
+        if user is None or getattr(user, "is_bot", False):
+            data.setdefault("theme", Theme({}))
+            return await handler(event, data)
+
+        row = await self.db.upsert_user(user.id, user.username, user.first_name or "")
         data["db_user"] = row
         data["lang"] = row["lang"] or "ru"
         data["theme"] = Theme(await self.db.button_map())
@@ -65,10 +81,11 @@ class ContextMiddleware(BaseMiddleware):
                 reason = ""
             if reason:
                 text = f"{text}\n{reason}"
-            if isinstance(event, Message):
-                await event.answer(text)
-            elif isinstance(event, CallbackQuery):
-                await event.answer(text, show_alert=True)
+            target = _inner(event)
+            if isinstance(target, Message):
+                await target.answer(text)
+            elif isinstance(target, CallbackQuery):
+                await target.answer(text, show_alert=True)
             return None
 
         return await handler(event, data)
