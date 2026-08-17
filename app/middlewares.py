@@ -1,12 +1,12 @@
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware, Dispatcher
-from aiogram.types import CallbackQuery, Message, TelegramObject, Update
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove, TelegramObject, Update
 
 from app.buttons import Theme
 from app.config import Settings
-from app.i18n import t
 from app.storage import Storage
+from app.util import ban_notice
 from app import ctx
 
 
@@ -73,23 +73,53 @@ class ContextMiddleware(BaseMiddleware):
         ctx.screen_ids.set(await self.db.screen_map())
         ctx.support_url.set(support_link(self.settings))
 
-        if row["banned"] and not self.settings.is_admin(user.id):
-            text = t(data["lang"], "banned")
-            reason = ""
-            try:
-                reason = (row["ban_reason"] or "").strip()
-            except (KeyError, IndexError, TypeError):
-                reason = ""
-            if reason:
-                text = f"{text}\n{reason}"
-            target = _inner(event)
-            if isinstance(target, Message):
-                await target.answer(text)
-            elif isinstance(target, CallbackQuery):
-                await target.answer(text, show_alert=True)
+        banned = False
+        try:
+            banned = bool(int(row["banned"] or 0))
+        except (KeyError, IndexError, TypeError, ValueError):
+            banned = False
+        if banned and not self.settings.is_admin(user.id):
+            text = ban_notice(data["lang"], row["ban_reason"] if "ban_reason" in row.keys() else "", self.settings.support_username)
+            await _send_ban(event, text)
             return None
 
         return await handler(event, data)
+
+
+async def _send_ban(event: TelegramObject, text: str) -> None:
+    target = _inner(event)
+    if isinstance(target, CallbackQuery):
+        try:
+            await target.answer()
+        except Exception:
+            pass
+        msg = target.message
+        if msg is None:
+            return
+        try:
+            await msg.edit_text(text, reply_markup=None)
+            return
+        except Exception:
+            pass
+        try:
+            await msg.edit_caption(caption=text, reply_markup=None)
+            return
+        except Exception:
+            pass
+        try:
+            await msg.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        try:
+            await msg.answer(text, reply_markup=ReplyKeyboardRemove())
+        except Exception:
+            pass
+        return
+    if isinstance(target, Message):
+        try:
+            await target.answer(text, reply_markup=ReplyKeyboardRemove())
+        except Exception:
+            pass
 
 
 def install(dp: Dispatcher, mw: ContextMiddleware) -> None:

@@ -8,7 +8,14 @@ RU = {
         "Оплата на гаранте до подтверждения сделки.\n"
         "Аккаунты · NFT · товар · TON"
     ),
-    "banned": "🚫 Аккаунт заблокирован.",
+    "banned": (
+        "🚫 <b>Доступ закрыт</b>\n\n"
+        "Ваш аккаунт заблокирован администратором.\n"
+        "Вы не можете пользоваться этим ботом.\n\n"
+        "{reason}"
+        "💬 Если это ошибка, напишите в поддержку: @{support}"
+    ),
+    "banned_reason": "📝 Причина: <b>{reason}</b>\n\n",
     "need_username": "⚠️ Укажите username в настройках Telegram — без него сделки недоступны.",
     "menu": "🏠 <b>Главное меню</b>\n\nВыберите действие ниже.",
     "btn_profile": "Профиль",
@@ -457,7 +464,6 @@ RU = {
     "admin_ask_ban_reason": "Причина бана. «-» без причины.",
     "admin_banned": "Пользователь {id} заблокирован.",
     "admin_unbanned": "Пользователь {id} разблокирован.",
-    "admin_ban_notice": "Вас заблокировали в боте.{reason}",
     "admin_reply": "Ответить в спор",
     "admin_ask_reply": "Сообщение в спор #{id}. Текст или фото.",
     "admin_ask_verdict": "Комментарий к вердикту. «-» без комментария.",
@@ -495,7 +501,14 @@ EN = {
         "Funds stay in escrow until the deal is confirmed.\n"
         "Accounts · NFT · goods · TON"
     ),
-    "banned": "🚫 This account is banned.",
+    "banned": (
+        "🚫 <b>Access denied</b>\n\n"
+        "Your account was banned by an administrator.\n"
+        "You cannot use this bot.\n\n"
+        "{reason}"
+        "💬 If this is a mistake, contact support: @{support}"
+    ),
+    "banned_reason": "📝 Reason: <b>{reason}</b>\n\n",
     "need_username": "⚠️ Set a Telegram username first. Deals are unavailable without it.",
     "menu": "🏠 <b>Main menu</b>\n\nPick an action below.",
     "btn_profile": "Profile",
@@ -929,7 +942,6 @@ EN = {
     "admin_ask_ban_reason": "Ban reason. “-” for none.",
     "admin_banned": "User {id} is banned.",
     "admin_unbanned": "User {id} is unbanned.",
-    "admin_ban_notice": "You were banned from this bot.{reason}",
     "admin_reply": "Reply in dispute",
     "admin_ask_reply": "Message for dispute #{id}. Text or photo.",
     "admin_ask_verdict": "Verdict comment. “-” to skip.",

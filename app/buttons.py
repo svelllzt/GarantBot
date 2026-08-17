@@ -257,6 +257,10 @@ class Theme:
             except (KeyError, IndexError, ValueError):
                 pass
         icon = EMOJI.get(key)
+        if self.emoji(key):
+            if icon and raw.startswith(icon):
+                return raw[len(icon) :].lstrip()
+            return raw
         if icon and icon not in raw:
             return f"{icon} {raw}"
         return raw
@@ -269,7 +273,8 @@ class Theme:
 
     def emoji(self, key: str) -> str | None:
         row = self.rows.get(key) or {}
-        return row.get("emoji_id") or None
+        value = (row.get("emoji_id") or "").strip()
+        return value or None
 
     def add(self, kb: InlineKeyboardBuilder, key: str, lang: str, **kwargs) -> None:
         fmt = kwargs.pop("fmt", None) or {}

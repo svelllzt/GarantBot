@@ -276,7 +276,18 @@ def extract_emoji_id(message: Message) -> str | None:
     for ent in message.entities or []:
         if getattr(ent, "custom_emoji_id", None):
             return ent.custom_emoji_id
-    raw = (message.text or "").strip()
+    for ent in message.caption_entities or []:
+        if getattr(ent, "custom_emoji_id", None):
+            return ent.custom_emoji_id
+    raw = (message.text or message.caption or "").strip()
     if raw.isdigit() and len(raw) >= 15:
         return raw
     return None
+
+
+def ban_notice(lang: str, reason: str | None, support: str) -> str:
+    extra = ""
+    clean = (reason or "").strip()
+    if clean:
+        extra = t(lang, "banned_reason", reason=h(clean))
+    return t(lang, "banned", reason=extra, support=(support or "").lstrip("@") or "—")

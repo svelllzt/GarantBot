@@ -96,9 +96,18 @@ async def main() -> None:
         assert not missing, missing
         assert not extra, extra
         from app.i18n import t
+        from app.util import ban_notice
+        from app.buttons import EMOJI, Theme
         assert "menu" in t("ru", "admin_screen_ask", key="menu")
         assert "Иван" in t("ru", "welcome", name="Иван")
         assert "btn_deal" in t("ru", "admin_btn_card", title="x", key="btn_deal", ru="a", en="b", style="s", emoji="e")
+        notice = ban_notice("ru", "спам", "support")
+        assert "спам" in notice and "support" in notice and "Доступ закрыт" in notice
+        themed = Theme({"btn_deal": {"emoji_id": "123456789012345", "label_ru": "Сделка", "label_en": "Deal"}})
+        labeled = themed.text("btn_deal", "ru")
+        assert labeled == "Сделка"
+        assert EMOJI["btn_deal"] not in labeled
+        assert EMOJI["btn_deal"] in Theme({}).text("btn_deal", "ru")
 
         class _Rate:
             ton_rate = 0.0

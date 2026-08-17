@@ -450,7 +450,12 @@ def buttons_list_kb(lang: str, theme: Theme, page: int) -> InlineKeyboardMarkup:
     start = page * PAGE_SIZE
     chunk = KEYS[start : start + PAGE_SIZE]
     for key in chunk:
-        kb.button(text=theme.text(key, lang, id=0), style=theme.style(key) or "primary", callback_data=BtnCB(a="open", k=key, p=page).pack())
+        kb.button(
+            text=theme.text(key, lang, id=0),
+            style=theme.style(key) or "primary",
+            icon_custom_emoji_id=theme.emoji(key),
+            callback_data=BtnCB(a="open", k=key, p=page).pack(),
+        )
     nav = []
     if page > 0:
         nav.append(("‹", BtnCB(a="list", p=page - 1).pack()))

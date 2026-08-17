@@ -3,7 +3,7 @@ import asyncio
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 
 from app.buttons import KEYS, Theme
 from app.config import Settings
@@ -30,7 +30,7 @@ from app.services import deals as svc
 from app.services.deals import DealError
 from app.states import AdminFlow
 from app.storage import WALLET_DONE, WALLET_REJECTED, Storage
-from app.util import extract_emoji_id, is_cancel, is_ton_deal, money, money_ton, parse_amount, paint
+from app.util import ban_notice, extract_emoji_id, is_cancel, is_ton_deal, money, money_ton, parse_amount, paint
 
 router = Router()
 
@@ -149,7 +149,7 @@ async def do_ban(message: Message, state: FSMContext, db: Storage, lang: str, th
 
 
 @router.message(AdminFlow.ban_reason)
-async def do_ban_reason(message: Message, state: FSMContext, db: Storage, lang: str):
+async def do_ban_reason(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings):
     if is_cancel(message.text or ""):
         return
     reason = (message.text or "").strip()
@@ -160,10 +160,14 @@ async def do_ban_reason(message: Message, state: FSMContext, db: Storage, lang: 
     await db.set_banned(uid, True, reason or None)
     await state.clear()
     await message.answer(t(lang, "admin_banned", id=uid))
-    extra = f"\n{reason}" if reason else ""
     try:
         user = await db.get_user(uid)
-        await message.bot.send_message(uid, t((user["lang"] if user else None) or "ru", "admin_ban_notice", reason=extra))
+        user_lang = (user["lang"] if user else None) or "ru"
+        await message.bot.send_message(
+            uid,
+            ban_notice(user_lang, reason, settings.support_username),
+            reply_markup=ReplyKeyboardRemove(),
+        )
     except Exception:
         pass
 
