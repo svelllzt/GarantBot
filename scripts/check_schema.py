@@ -95,6 +95,9 @@ async def main() -> None:
         extra = set(EN) - set(RU)
         assert not missing, missing
         assert not extra, extra
+        from app.i18n import t
+        assert "menu" in t("ru", "admin_screen_ask", key="menu")
+        assert "btn_deal" in t("ru", "admin_btn_card", title="x", key="btn_deal", ru="a", en="b", style="s", emoji="e")
 
         class _Rate:
             ton_rate = 0.0

@@ -962,9 +962,9 @@ EN = {
 LOCALES = {"ru": RU, "en": EN}
 
 
-def t(lang: str, key: str, **kwargs: Any) -> str:
+def t(lang: str, name: str, **kwargs: Any) -> str:
     table = LOCALES.get(lang) or RU
-    text = table.get(key) or RU.get(key) or key
+    text = table.get(name) or RU.get(name) or name
     if not kwargs:
         return text
     try:
