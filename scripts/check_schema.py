@@ -4,7 +4,7 @@ import tempfile
 
 from app.i18n import EN, RU
 from app.services.ton import ton_to_currency
-from app.storage import DEAL_CLOSED, DEAL_LISTED, DEAL_OPEN, DEAL_PAID, KIND_TON_RUB, NFT_AVAILABLE, NFT_LOCKED, Storage
+from app.storage import DEAL_CLOSED, DEAL_LISTED, DEAL_OPEN, DEAL_PAID, DEAL_RUB_SENT, KIND_TON_RUB, NFT_AVAILABLE, NFT_LOCKED, Storage
 
 
 async def main() -> None:
@@ -199,6 +199,72 @@ async def main() -> None:
         opened = await db.get_deal(buy_ad)
         assert opened["seller_id"] == 3
         assert opened["nft_id"] == nft_c
+        await db.touch_deal(buy_ad, status=DEAL_CLOSED)
+
+        from app.keyboards import deal_kb
+        from app.util import pays_requisites
+        from app.catalog import needs_nft
+        assert not needs_nft("acc_rbx")
+        await db.upsert_user(4, "accseller", "Акк")
+        acc_id = await dsvc.create_listing(db, 4, "acc_rbx", "Roblox", 500, "mail unbound")
+        acc = await db.get_deal(acc_id)
+        assert not acc["nft_id"]
+        try:
+            await dsvc.take_listing(db, acc_id, 2)
+            raise AssertionError("account listing without requisites needs deposit")
+        except DealErr as exc:
+            assert exc.key == "deal_need_deposit"
+        await db.set_requisite(4, "card", "4111111111111111")
+        seller4 = await db.get_user(4)
+        assert pays_requisites(acc, seller4)
+        await dsvc.take_listing(db, acc_id, 2)
+        opened_acc = await db.get_deal(acc_id)
+        assert opened_acc["status"] == DEAL_OPEN
+        assert opened_acc["buyer_id"] == 2
+        assert float((await db.get_user(2))["balance"]) == 0
+        theme = Theme({})
+        seller_kb = deal_kb("ru", theme, opened_acc, 4, seller4)
+        seller_cb = [btn.callback_data or "" for row in seller_kb.inline_keyboard for btn in row]
+        assert not any(cb.startswith("deal:nft") for cb in seller_cb)
+        buyer_kb = deal_kb("ru", theme, opened_acc, 2, seller4)
+        buyer_cb = [btn.callback_data or "" for row in buyer_kb.inline_keyboard for btn in row]
+        assert any(cb.startswith("deal:pdf") for cb in buyer_cb)
+        assert not any(cb.startswith("deal:pay") for cb in buyer_cb)
+        try:
+            await dsvc.pay(db, acc_id, 2)
+            raise AssertionError("requisites deal must not pay from balance")
+        except DealErr as exc:
+            assert exc.key == "deal_req_no_pay"
+        try:
+            await dsvc.attach_nft(db, acc_id, 4, nft_id)
+            raise AssertionError("account deal must not attach nft")
+        except DealErr:
+            pass
+        await dsvc.submit_receipt(db, acc_id, 2, "pdf-acc")
+        assert (await db.get_deal(acc_id))["status"] == DEAL_RUB_SENT
+        await dsvc.confirm_req_pay(db, acc_id, 4)
+        assert (await db.get_deal(acc_id))["status"] == DEAL_PAID
+        assert float((await db.get_user(4))["balance"]) == 0
+        payout = await dsvc.complete(db, Settings(dict(DEFAULTS), Path("config.ini")), acc_id, 2)
+        assert payout == 0.0
+        assert float((await db.get_user(4))["balance"]) == 0
+        text = t(
+            "ru",
+            "deal_opened_req",
+            id=1,
+            cat="x",
+            title="t",
+            buyer="b",
+            buyer_id=1,
+            seller="s",
+            seller_id=2,
+            amount="1",
+            req="r",
+            receipt="p",
+            desc="d",
+            status="open",
+        )
+        assert "NFT" not in text
 
         await db.close()
         print("ok")

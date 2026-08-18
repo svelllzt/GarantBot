@@ -85,7 +85,8 @@ RU = {
     "about": (
         "ℹ️ <b>Phantom OTC</b>\n\n"
         "Безопасные сделки: аккаунты, NFT-подарки, товар, TON.\n\n"
-        "• Оплата с баланса — деньги у гаранта до подтверждения\n"
+        "• Оплата с баланса — деньги у гаранта до подтверждения, если у продавца нет реквизитов\n"
+        "• Аккаунты и товар при указанных реквизитах — перевод продавцу, чек PDF, без пополнения баланса\n"
         "• NFT за рубли — по реквизитам продавца, чек только PDF\n"
         "• TON → рубли через кошелёк V4\n"
         "• Памятка по категории при открытии сделки\n\n"
@@ -136,7 +137,6 @@ RU = {
         "🛒 Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Продавец: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Сумма: <b>{amount}</b>\n"
-        "🎁 NFT: {nft}\n"
         "📝 Условия: {desc}\n"
         "📌 Статус: <b>{status}</b>"
     ),
@@ -148,6 +148,18 @@ RU = {
         "💼 Продавец: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Цена: <b>{amount}</b>\n"
         "🎁 NFT: {nft}\n"
+        "💳 Реквизиты продавца:\n{req}\n"
+        "📄 Чек: {receipt}\n"
+        "📝 Условия: {desc}\n"
+        "📌 Статус: <b>{status}</b>"
+    ),
+    "deal_opened_req": (
+        "🛡️ <b>Сделка #{id}</b>\n"
+        "📂 {cat}\n"
+        "🏷 {title}\n\n"
+        "🛒 Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
+        "💼 Продавец: @{seller} (<code>{seller_id}</code>)\n"
+        "💰 Цена: <b>{amount}</b>\n"
         "💳 Реквизиты продавца:\n{req}\n"
         "📄 Чек: {receipt}\n"
         "📝 Условия: {desc}\n"
@@ -215,6 +227,14 @@ RU = {
     "deal_nft_done": "Деньги подтверждены. NFT отправлен покупателю.",
     "deal_nft_done_buyer": "Продавец подтвердил оплату. NFT отправлен вам.",
     "deal_nft_no_pay": "NFT оплачивается по реквизитам продавца, не с баланса бота. Прикрепите чек PDF.",
+    "deal_req_no_pay": "Эта сделка оплачивается по реквизитам продавца, не с баланса бота. Прикрепите чек PDF.",
+    "deal_req_confirm_ask": "Рубли пришли по реквизитам? После подтверждения передайте товар покупателю.",
+    "deal_req_done": "Оплата подтверждена. Передайте товар покупателю.",
+    "deal_req_done_buyer": "Продавец подтвердил оплату. Проверьте товар и нажмите «Товар получен».",
+    "deal_req_pdf_got": (
+        "Покупатель прислал чек PDF по сделке #{id}.\n"
+        "Проверьте перевод. Если деньги пришли — подтвердите."
+    ),
     "deal_nft_pay_hint": "Оплатите <b>{amount} ₽</b> по реквизитам продавца и прикрепите чек PDF.",
     "deal_receipt_none": "не прикреплён",
     "deal_receipt_yes": "PDF получен",
@@ -379,6 +399,14 @@ RU = {
         "💰 Цена: <b>{amount}</b>\n\n"
         "{desc}\n\n"
         "Оплата через бота-гаранта. Нажмите «Открыть в боте»."
+    ),
+    "channel_listing_req": (
+        "🛡️ <b>Сделка #{id}</b> · {cat}\n"
+        "{title}\n\n"
+        "💼 Продавец: @{seller}\n"
+        "💰 Цена: <b>{amount}</b>\n\n"
+        "{desc}\n\n"
+        "Оплата по реквизитам продавца, чек PDF. Нажмите «Открыть в боте»."
     ),
     "channel_listing_buy": (
         "🛡️ <b>Ищу #{id}</b> · {cat}\n"
@@ -584,7 +612,8 @@ EN = {
     "about": (
         "ℹ️ <b>Phantom OTC</b>\n\n"
         "Safe P2P deals: accounts, NFT gifts, goods, TON.\n\n"
-        "• Pay from balance — funds stay in escrow until confirm\n"
+        "• Pay from balance — funds stay in escrow until confirm, if the seller has no payout details\n"
+        "• Accounts and goods with payout details — pay the seller, PDF receipt, no bot top-up\n"
         "• NFT for rubles — pay the seller’s details, PDF receipt only\n"
         "• TON → RUB via Wallet V4\n"
         "• Category memo when a deal opens\n\n"
@@ -635,7 +664,6 @@ EN = {
         "🛒 Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Seller: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Amount: <b>{amount}</b>\n"
-        "🎁 NFT: {nft}\n"
         "📝 Terms: {desc}\n"
         "📌 Status: <b>{status}</b>"
     ),
@@ -647,6 +675,18 @@ EN = {
         "💼 Seller: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Price: <b>{amount}</b>\n"
         "🎁 NFT: {nft}\n"
+        "💳 Seller details:\n{req}\n"
+        "📄 Receipt: {receipt}\n"
+        "📝 Terms: {desc}\n"
+        "📌 Status: <b>{status}</b>"
+    ),
+    "deal_opened_req": (
+        "🛡️ <b>Deal #{id}</b>\n"
+        "📂 {cat}\n"
+        "🏷 {title}\n\n"
+        "🛒 Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
+        "💼 Seller: @{seller} (<code>{seller_id}</code>)\n"
+        "💰 Price: <b>{amount}</b>\n"
         "💳 Seller details:\n{req}\n"
         "📄 Receipt: {receipt}\n"
         "📝 Terms: {desc}\n"
@@ -714,6 +754,14 @@ EN = {
     "deal_nft_done": "Payment confirmed. The NFT was sent to the buyer.",
     "deal_nft_done_buyer": "The seller confirmed payment. The NFT was sent to you.",
     "deal_nft_no_pay": "NFT deals are paid to the seller’s details, not from the bot balance. Attach a PDF receipt.",
+    "deal_req_no_pay": "This deal is paid to the seller’s details, not from the bot balance. Attach a PDF receipt.",
+    "deal_req_confirm_ask": "Did the rubles arrive? After you confirm, deliver the item to the buyer.",
+    "deal_req_done": "Payment confirmed. Deliver the item to the buyer.",
+    "deal_req_done_buyer": "The seller confirmed payment. Check the item and tap Item received.",
+    "deal_req_pdf_got": (
+        "The buyer sent a PDF receipt for deal #{id}.\n"
+        "Check the transfer. If the money arrived, confirm."
+    ),
     "deal_nft_pay_hint": "Pay <b>{amount} ₽</b> to the seller’s details and attach a PDF receipt.",
     "deal_receipt_none": "not attached",
     "deal_receipt_yes": "PDF received",
@@ -879,6 +927,14 @@ EN = {
         "💰 Price: <b>{amount}</b>\n\n"
         "{desc}\n\n"
         "Pay through the escrow bot. Tap Open in bot."
+    ),
+    "channel_listing_req": (
+        "🛡️ <b>Deal #{id}</b> · {cat}\n"
+        "{title}\n\n"
+        "💼 Seller: @{seller}\n"
+        "💰 Price: <b>{amount}</b>\n\n"
+        "{desc}\n\n"
+        "Pay the seller’s details. The buyer sends a PDF receipt. Tap Open in bot."
     ),
     "channel_listing_buy": (
         "🛡️ <b>Wanted #{id}</b> · {cat}\n"

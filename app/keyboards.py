@@ -5,6 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from app.buttons import KEYS, PAGE_SIZE, STYLES, Theme
 from app.i18n import t
 from app.storage import DEAL_DISPUTE, DEAL_FUNDED, DEAL_LISTED, DEAL_OPEN, DEAL_PAID, DEAL_PENDING, DEAL_REVIEW, DEAL_RUB_SENT, DEAL_WAIT_TON, Storage
+from app.util import pays_requisites
 from app import ctx
 
 
@@ -199,10 +200,10 @@ def offer_kb(lang: str, theme: Theme, deal_id: int) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def deal_kb(lang: str, theme: Theme, deal, user_id: int) -> InlineKeyboardMarkup:
+def deal_kb(lang: str, theme: Theme, deal, user_id: int, seller_row=None) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     status = deal["status"]
-    seller = user_id == deal["seller_id"]
+    is_seller = user_id == deal["seller_id"]
     owner = int(deal["seller_id"] or 0) or int(deal["buyer_id"] or 0)
     ton = False
     nft = False
@@ -214,7 +215,8 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int) -> InlineKeyboardMarkup
         nft = (deal["category"] or "") == "nft"
     except (KeyError, IndexError, TypeError):
         nft = False
-    if status == DEAL_PENDING and seller:
+    req_pay = pays_requisites(deal, seller_row)
+    if status == DEAL_PENDING and is_seller:
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
     if status == DEAL_LISTED and user_id == owner:
         theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())
@@ -224,23 +226,22 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int) -> InlineKeyboardMarkup
         theme.add(kb, "deal_manual_btn", lang, callback_data=DealCB(a="memo", i=deal["id"]).pack())
     if status == DEAL_OPEN:
         if ton:
-            if seller:
+            if is_seller:
                 theme.add(kb, "deal_set_ton", lang, callback_data=DealCB(a="tonamt", i=deal["id"]).pack())
                 theme.add(kb, "deal_set_rub", lang, callback_data=DealCB(a="rubamt", i=deal["id"]).pack())
                 theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
             else:
                 theme.add(kb, "deal_set_buy_ton", lang, callback_data=DealCB(a="buyaddr", i=deal["id"]).pack())
-        elif nft:
-            if seller:
-                if not deal["nft_id"]:
+        elif req_pay:
+            if is_seller:
+                if nft and not deal["nft_id"]:
                     theme.add(kb, "deal_set_nft", lang, callback_data=DealCB(a="nft", i=deal["id"]).pack())
                 theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())
                 theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
             else:
                 theme.add(kb, "deal_pdf", lang, callback_data=DealCB(a="pdf", i=deal["id"]).pack())
-        elif seller:
+        elif is_seller:
             theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())
-            theme.add(kb, "deal_set_nft", lang, callback_data=DealCB(a="nft", i=deal["id"]).pack())
             theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
         else:
             theme.add(kb, "deal_pay", lang, callback_data=DealCB(a="pay", i=deal["id"]).pack())
@@ -250,15 +251,15 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int) -> InlineKeyboardMarkup
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
     if status == DEAL_FUNDED:
-        if not seller:
+        if not is_seller:
             theme.add(kb, "deal_rub_paid", lang, callback_data=DealCB(a="rubpay", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
     if status == DEAL_RUB_SENT:
-        if seller:
+        if is_seller:
             theme.add(kb, "deal_rub_ok", lang, callback_data=DealCB(a="rubok", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
     if status == DEAL_PAID:
-        if not seller:
+        if not is_seller:
             theme.add(kb, "deal_confirm", lang, callback_data=DealCB(a="ok", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
     if status == DEAL_DISPUTE:
@@ -266,7 +267,7 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int) -> InlineKeyboardMarkup
         theme.add(kb, "deal_dispute_evidence", lang, callback_data=DealCB(a="disev", i=deal["id"]).pack())
     if status == DEAL_REVIEW and nft and not deal["nft_sent"]:
         theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
-    if status == DEAL_REVIEW and not seller:
+    if status == DEAL_REVIEW and not is_seller:
         theme.add(kb, "deal_review_skip", lang, callback_data=DealCB(a="skip", i=deal["id"]).pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
     kb.adjust(2)

@@ -25,7 +25,7 @@ from app.storage import (
     NFT_TRANSFERRED,
     Storage,
 )
-from app.util import has_rub_req, is_nft_deal, is_ton_deal, listing_is_buy, listing_owner, nft_title, seller_payout, valid_ton
+from app.util import has_rub_req, is_nft_deal, is_ton_deal, listing_is_buy, listing_owner, nft_title, pays_requisites, seller_payout, valid_ton
 
 
 class DealError(Exception):
@@ -167,7 +167,9 @@ async def take_listing(db: Storage, deal_id: int, taker_id: int, nft_id: int = 0
             raise DealError("deal_nft_need_req")
         if not nft_id:
             raise DealError("deal_nft_need_item")
-    if not nft:
+    seller_id = taker_id if buy_ad else deal["seller_id"]
+    seller = await db.get_user(seller_id) if seller_id else None
+    if not nft and not has_rub_req(seller):
         payer_id = deal["buyer_id"] if buy_ad else taker_id
         payer = await db.get_user(payer_id)
         if payer is None or float(payer["balance"] or 0) < need:
@@ -247,6 +249,8 @@ async def attach_nft(db: Storage, deal_id: int, user_id: int, nft_id: int) -> st
         raise DealError("error")
     if is_ton_deal(deal):
         raise DealError("error")
+    if not is_nft_deal(deal):
+        raise DealError("error")
     if deal["status"] not in {DEAL_OPEN, DEAL_LISTED, DEAL_PENDING}:
         raise DealError("error")
     if nft["owner_id"] != user_id:
@@ -267,13 +271,14 @@ async def attach_nft(db: Storage, deal_id: int, user_id: int, nft_id: int) -> st
 
 async def submit_receipt(db: Storage, deal_id: int, user_id: int, file_id: str) -> None:
     deal = await db.get_deal(deal_id)
-    if deal is None or deal["buyer_id"] != user_id or not is_nft_deal(deal):
+    seller = await db.get_user(deal["seller_id"]) if deal and deal["seller_id"] else None
+    if deal is None or deal["buyer_id"] != user_id or not pays_requisites(deal, seller):
         raise DealError("error")
     if deal["status"] != DEAL_OPEN:
         raise DealError("error")
     if not deal["amount"]:
         raise DealError("deal_pay_no_amount")
-    if not deal["nft_id"]:
+    if is_nft_deal(deal) and not deal["nft_id"]:
         raise DealError("deal_nft_need_item")
     if not (file_id or "").strip():
         raise DealError("deal_nft_pdf_only")
@@ -292,6 +297,21 @@ async def confirm_nft_rub(db: Storage, deal_id: int, user_id: int) -> None:
     if not await db.claim_deal(deal_id, DEAL_RUB_SENT, status=DEAL_REVIEW):
         raise DealError("error")
     await db.bump_deals(deal["seller_id"], deal["buyer_id"])
+
+
+async def confirm_req_pay(db: Storage, deal_id: int, user_id: int) -> None:
+    deal = await db.get_deal(deal_id)
+    if deal is None or deal["seller_id"] != user_id or is_nft_deal(deal) or is_ton_deal(deal):
+        raise DealError("error")
+    seller = await db.get_user(user_id)
+    if not pays_requisites(deal, seller):
+        raise DealError("error")
+    if deal["status"] != DEAL_RUB_SENT:
+        raise DealError("error")
+    if not deal["receipt_id"]:
+        raise DealError("deal_nft_pdf_only")
+    if not await db.claim_deal(deal_id, DEAL_RUB_SENT, status=DEAL_PAID):
+        raise DealError("error")
 
 
 async def set_ton_amount(db: Storage, deal_id: int, user_id: int, amount: float) -> bool:
@@ -403,6 +423,9 @@ async def pay(db: Storage, deal_id: int, user_id: int) -> None:
         raise DealError("error")
     if is_nft_deal(deal):
         raise DealError("deal_nft_no_pay")
+    seller = await db.get_user(deal["seller_id"]) if deal["seller_id"] else None
+    if pays_requisites(deal, seller):
+        raise DealError("deal_req_no_pay")
     if deal["status"] != DEAL_OPEN:
         raise DealError("error")
     if deal["amount"] is None:
@@ -427,6 +450,12 @@ async def complete(db: Storage, settings: Settings, deal_id: int, user_id: int) 
         raise DealError("error")
     if is_nft_deal(deal):
         raise DealError("error")
+    seller = await db.get_user(deal["seller_id"]) if deal["seller_id"] else None
+    if pays_requisites(deal, seller):
+        if not await db.claim_deal(deal_id, DEAL_PAID, status=DEAL_REVIEW):
+            raise DealError("error")
+        await db.bump_deals(deal["seller_id"], deal["buyer_id"])
+        return 0.0
     payout = seller_payout(deal["amount"], settings.commission_percent)
     if not await db.claim_deal(deal_id, DEAL_PAID, status=DEAL_REVIEW):
         raise DealError("error")
@@ -513,6 +542,9 @@ async def open_dispute(db: Storage, deal_id: int, user_id: int, reason: str = ""
     elif is_nft_deal(deal):
         if deal["status"] not in {DEAL_RUB_SENT, DEAL_REVIEW}:
             raise DealError("error")
+    elif pays_requisites(deal, await db.get_user(deal["seller_id"]) if deal["seller_id"] else None):
+        if deal["status"] not in {DEAL_RUB_SENT, DEAL_PAID}:
+            raise DealError("error")
     elif deal["status"] != DEAL_PAID:
         raise DealError("error")
     if not await db.claim_deal(
@@ -554,6 +586,8 @@ async def verdict_buyer(db: Storage, deal_id: int, ton: TonEscrow | None = None)
             await _refund_ton(db, ton, deal)
         elif is_nft_deal(deal):
             pass
+        elif pays_requisites(deal, await db.get_user(deal["seller_id"]) if deal["seller_id"] else None):
+            pass
         elif deal["amount"] is not None:
             await db.change_balance(deal["buyer_id"], float(deal["amount"]))
     except Exception:
@@ -593,6 +627,11 @@ async def verdict_seller(db: Storage, settings: Settings, deal_id: int, ton: Ton
         await db.bump_deals(deal["seller_id"], deal["buyer_id"])
         if deal["nft_sent"]:
             await _settle_nft(db, deal, to_buyer=True)
+        return 0.0
+    if pays_requisites(deal, await db.get_user(deal["seller_id"]) if deal["seller_id"] else None):
+        if not await db.claim_deal(deal_id, DEAL_DISPUTE, status=DEAL_CLOSED):
+            raise DealError("error")
+        await db.bump_deals(deal["seller_id"], deal["buyer_id"])
         return 0.0
     if not await db.claim_deal(deal_id, DEAL_DISPUTE, status=DEAL_CLOSED):
         raise DealError("error")

@@ -253,9 +253,28 @@ def label(category: str | None, lang: str) -> str:
     return row.get(lang) or row["ru"]
 
 
+_PAY_HINT = {
+    "ru": (
+        "Оплата: если у продавца заполнены реквизиты (карта или телефон и банк) — "
+        "покупатель переводит туда и присылает чек PDF. Баланс бота в этом случае не нужен. "
+        "Если реквизитов нет — оплата с баланса гаранта."
+    ),
+    "en": (
+        "Payment: if the seller has payout details (card, or phone plus bank), the buyer pays "
+        "those details and uploads a PDF receipt. The bot balance is not used then. "
+        "If there are no details, pay from the escrow balance."
+    ),
+}
+
+
 def manual(category: str | None, lang: str) -> str:
     row = _MANUAL.get(normalize(category)) or _MANUAL["other"]
-    return row.get(lang) or row["ru"]
+    body = row.get(lang) or row["ru"]
+    cat = normalize(category)
+    if cat in {"nft", "ton"}:
+        return body
+    hint = _PAY_HINT.get(lang) or _PAY_HINT["ru"]
+    return hint + "\n\n" + body
 
 
 def payment_kind(category: str | None) -> str:

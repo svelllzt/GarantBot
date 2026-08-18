@@ -105,6 +105,14 @@ def is_nft_deal(deal) -> bool:
         return False
 
 
+def pays_requisites(deal, seller=None) -> bool:
+    if is_nft_deal(deal):
+        return True
+    if is_ton_deal(deal):
+        return False
+    return has_rub_req(seller)
+
+
 def listing_owner(deal) -> int:
     try:
         return int(deal["seller_id"] or 0) or int(deal["buyer_id"] or 0)
@@ -119,8 +127,8 @@ def listing_is_buy(deal) -> bool:
         return False
 
 
-def deal_currency(deal, fallback: str) -> str:
-    if is_nft_deal(deal):
+def deal_currency(deal, fallback: str, seller=None) -> str:
+    if pays_requisites(deal, seller):
         return "₽"
     return fallback
 
@@ -207,15 +215,16 @@ async def render_deal(db, deal, lang: str, currency: str, escrow: str = "") -> s
             payout=deal["payout_hash"] or "—",
         )
     nft = await db.get_nft(deal["nft_id"]) if deal["nft_id"] else None
-    pay = deal_currency(deal, currency)
+    pay = deal_currency(deal, currency, seller)
     amount = f"{money(deal['amount'])} {pay}" if deal["amount"] is not None else "—"
-    if is_nft_deal(deal):
+    if is_nft_deal(deal) or pays_requisites(deal, seller):
         show_req = deal["status"] not in {DEAL_PENDING, DEAL_LISTED, DEAL_CANCELLED}
         req = seller_req_text(seller, lang) if show_req and seller else t(lang, "not_set")
         receipt = t(lang, "deal_receipt_yes") if deal["receipt_id"] else t(lang, "deal_receipt_none")
+        key = "deal_opened_nft" if is_nft_deal(deal) else "deal_opened_req"
         return t(
             lang,
-            "deal_opened_nft",
+            key,
             id=deal["id"],
             cat=cat,
             title=h(title) if title else cat,
@@ -241,7 +250,6 @@ async def render_deal(db, deal, lang: str, currency: str, escrow: str = "") -> s
         seller=username_of(seller) if seller else "-",
         seller_id=deal["seller_id"],
         amount=amount,
-        nft=nft_title(nft) if nft else t(lang, "deal_nft_none"),
         desc=h(deal["description"]) if deal["description"] else "—",
         status=t(lang, deal_status_key(deal["status"])),
     )
