@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_PATH = ROOT / "config.ini.example"
 DEFAULT_PATH = ROOT / "config.ini"
 
-SECTIONS = ("bot", "bank", "ton", "db")
+SECTIONS = ("bot", "bank", "ton", "fragment", "db")
 
 FIELDS: dict[tuple[str, str], str] = {
     ("bot", "token"): "bot_token",
@@ -38,6 +38,12 @@ FIELDS: dict[tuple[str, str], str] = {
     ("ton", "gas"): "ton_gas",
     ("ton", "min_deal"): "min_ton_deal",
     ("ton", "min_rub"): "min_rub_deal",
+    ("fragment", "mnemonic"): "fragment_mnemonic",
+    ("fragment", "api_key"): "fragment_api_key",
+    ("fragment", "cookies"): "fragment_cookies",
+    ("fragment", "wallet"): "fragment_wallet",
+    ("fragment", "stars"): "fragment_stars",
+    ("fragment", "provider"): "fragment_provider",
     ("db", "path"): "db_path",
 }
 
@@ -68,6 +74,12 @@ DEFAULTS: dict[str, Any] = {
     "ton_gas": 0.05,
     "min_ton_deal": 0.1,
     "min_rub_deal": 1.0,
+    "fragment_mnemonic": "",
+    "fragment_api_key": "",
+    "fragment_cookies": "",
+    "fragment_wallet": "V4R2",
+    "fragment_stars": 100,
+    "fragment_provider": "toncenter",
     "db_path": "data/garant.db",
 }
 
@@ -96,14 +108,21 @@ ENV_TO_ATTR = {
     "TON_GAS": "ton_gas",
     "MIN_TON_DEAL": "min_ton_deal",
     "MIN_RUB_DEAL": "min_rub_deal",
+    "FRAGMENT_MNEMONIC": "fragment_mnemonic",
+    "FRAGMENT_API_KEY": "fragment_api_key",
+    "FRAGMENT_COOKIES": "fragment_cookies",
+    "FRAGMENT_WALLET": "fragment_wallet",
+    "FRAGMENT_STARS": "fragment_stars",
+    "FRAGMENT_PROVIDER": "fragment_provider",
     "DB_PATH": "db_path",
 }
 
 
 def config_path() -> Path:
-    raw = os.environ.get("GARANT_CONFIG", "").strip()
-    if raw:
-        return Path(raw).expanduser().resolve()
+    for env_name in ("PHANTOM_CONFIG", "GARANT_CONFIG"):
+        raw = os.environ.get(env_name, "").strip()
+        if raw:
+            return Path(raw).expanduser().resolve()
     return DEFAULT_PATH
 
 
@@ -122,8 +141,10 @@ def _cast(attr: str, value: str) -> Any:
         return float(text.replace(",", "."))
     if attr == "bank_username":
         return text.lstrip("@")
-    if attr == "ton_mnemonic":
+    if attr in {"ton_mnemonic", "fragment_mnemonic"}:
         return " ".join(text.split())
+    if attr == "fragment_wallet":
+        return text.upper() or "V4R2"
     return text
 
 
@@ -225,7 +246,8 @@ def _write_ini(path: Path, values: dict[str, Any]) -> None:
     titles = {
         "bot": "Бот",
         "bank": "Pyrogram / NFT-банк",
-        "ton": "TON",
+        "ton": "TON эскроу",
+        "fragment": "Fragment / Stars",
         "db": "База",
     }
     for section in SECTIONS:
@@ -296,6 +318,12 @@ class Settings:
     ton_gas: float
     min_ton_deal: float
     min_rub_deal: float
+    fragment_mnemonic: str
+    fragment_api_key: str
+    fragment_cookies: str
+    fragment_wallet: str
+    fragment_stars: int
+    fragment_provider: str
     db_path: str
     path: Path
     bot_username: str

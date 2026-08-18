@@ -98,8 +98,24 @@ async def main() -> None:
         from app.i18n import t
         from app.util import ban_notice
         from app.buttons import EMOJI, Theme
+        from app.config import DEFAULTS, Settings
+        from app.services.fragment import StarsBuyer, cookies_line, parse_cookies
+        from pathlib import Path
         assert "menu" in t("ru", "admin_screen_ask", key="menu")
         assert "Иван" in t("ru", "welcome", name="Иван")
+        assert "Phantom OTC" in t("ru", "welcome", name="Иван")
+        assert "Phantom OTC" in t("en", "welcome", name="Ivan")
+        assert parse_cookies("stel_ssid=a; stel_dt=b; stel_token=c") == {
+            "stel_ssid": "a",
+            "stel_dt": "b",
+            "stel_token": "c",
+        }
+        assert parse_cookies('{"stel_ssid": "a", "stel_token": "b"}') == {"stel_ssid": "a", "stel_token": "b"}
+        assert cookies_line({"a": "1", "b": "2"}) == "a=1; b=2"
+        buyer = StarsBuyer(Settings(dict(DEFAULTS), Path("config.ini")))
+        assert buyer.pack() == 100
+        assert not buyer.enabled()
+        assert buyer.status_key() == "admin_fragment_off"
         assert "btn_deal" in t("ru", "admin_btn_card", title="x", key="btn_deal", ru="a", en="b", style="s", emoji="e")
         notice = ban_notice("ru", "спам", "support")
         assert "спам" in notice and "support" in notice and "Доступ закрыт" in notice

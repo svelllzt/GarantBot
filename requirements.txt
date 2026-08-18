@@ -2,4 +2,5 @@ aiogram>=3.15,<4
 pyrofork>=2.3.45
 aiosqlite>=0.20
 aiohttp>=3.10
-tonutils>=0.3.6
+tonutils>=0.4.0
+fragment-api-py>=10.0.0

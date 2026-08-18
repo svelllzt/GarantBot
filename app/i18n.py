@@ -3,7 +3,7 @@ from typing import Any
 RU = {
     "choose_lang": "🌐 <b>Язык / Language</b>\n\nВыберите язык интерфейса.",
     "welcome": (
-        "🛡️ <b>ASTRO GARANT</b>\n"
+        "🛡️ <b>Phantom OTC</b>\n"
         "Привет, {name}!\n\n"
         "Оплата на гаранте до подтверждения сделки.\n"
         "Аккаунты · NFT · товар · TON"
@@ -83,7 +83,7 @@ RU = {
     "withdraw_low": "⚠️ Недостаточно средств.",
     "min_amount": "⚠️ Минимум {min} {currency}.",
     "about": (
-        "ℹ️ <b>О сервисе</b>\n\n"
+        "ℹ️ <b>Phantom OTC</b>\n\n"
         "Безопасные сделки: аккаунты, NFT-подарки, товар, TON.\n\n"
         "• Оплата с баланса — деньги у гаранта до подтверждения\n"
         "• NFT за рубли — по реквизитам продавца, чек только PDF\n"
@@ -476,6 +476,7 @@ RU = {
         "Сейчас в гаранте: {escrow} {currency}\n\n"
         "Банк: {bank}\n"
         "Stars: {stars}\n"
+        "Fragment: {fragment}\n"
         "Передача NFT: {fee}★, хватит на {nft_left}\n"
         "Ожидают отправки NFT: {pending_nft}\n\n"
         "По статусам:\n{by_status}\n\n"
@@ -487,16 +488,21 @@ RU = {
     "admin_stars_unknown": "не удалось прочитать",
     "admin_stars_low": (
         "На банковском аккаунте {stars}★, порог {min}★.\n"
-        "Передача NFT стоит ≈{fee}★. Пополните Stars на этом аккаунте — бот сам дошлёт подарки.\n"
+        "Передача NFT стоит ≈{fee}★. Автопокупка {pack}★ за TON через Fragment не закрыла нехватку — проверьте [fragment] в config.ini.\n"
         "Ожидают отправки: {pending}."
     ),
+    "admin_stars_bought": "✅ Fragment купил {amount}★ на банк @{user} за TON.\nTX: <code>{tx}</code>",
+    "admin_stars_buy_fail": "❌ Fragment не купил Stars на банк @{user}: {error}",
+    "admin_fragment_on": "автопокупка ★",
+    "admin_fragment_off": "выкл.",
+    "admin_fragment_wait": "не готово (cookies / ключ / библиотека)",
     "admin_nft_no_stars": "Сделка #{id}: не хватило Stars на передачу NFT. Баланс {stars}★, нужно {fee}★.",
 }
 
 EN = {
     "choose_lang": "🌐 <b>Language / Язык</b>\n\nChoose the interface language.",
     "welcome": (
-        "🛡️ <b>ASTRO GARANT</b>\n"
+        "🛡️ <b>Phantom OTC</b>\n"
         "Hey, {name}!\n\n"
         "Funds stay in escrow until the deal is confirmed.\n"
         "Accounts · NFT · goods · TON"
@@ -576,7 +582,7 @@ EN = {
     "withdraw_low": "⚠️ Insufficient balance.",
     "min_amount": "⚠️ Minimum {min} {currency}.",
     "about": (
-        "ℹ️ <b>About</b>\n\n"
+        "ℹ️ <b>Phantom OTC</b>\n\n"
         "Safe P2P deals: accounts, NFT gifts, goods, TON.\n\n"
         "• Pay from balance — funds stay in escrow until confirm\n"
         "• NFT for rubles — pay the seller’s details, PDF receipt only\n"
@@ -954,6 +960,7 @@ EN = {
         "In escrow now: {escrow} {currency}\n\n"
         "Bank: {bank}\n"
         "Stars: {stars}\n"
+        "Fragment: {fragment}\n"
         "NFT transfer: {fee}★, enough for {nft_left}\n"
         "Pending NFT sends: {pending_nft}\n\n"
         "By status:\n{by_status}\n\n"
@@ -965,9 +972,14 @@ EN = {
     "admin_stars_unknown": "unavailable",
     "admin_stars_low": (
         "Bank account has {stars}★, threshold {min}★.\n"
-        "An NFT transfer costs ≈{fee}★. Top up Stars on that account — the bot will send pending gifts itself.\n"
+        "An NFT transfer costs ≈{fee}★. Auto-buy of {pack}★ for TON via Fragment did not cover it — check [fragment] in config.ini.\n"
         "Waiting to send: {pending}."
     ),
+    "admin_stars_bought": "✅ Fragment bought {amount}★ for bank @{user} with TON.\nTX: <code>{tx}</code>",
+    "admin_stars_buy_fail": "❌ Fragment failed to buy Stars for bank @{user}: {error}",
+    "admin_fragment_on": "★ auto-buy",
+    "admin_fragment_off": "off",
+    "admin_fragment_wait": "not ready (cookies / key / library)",
     "admin_nft_no_stars": "Deal #{id}: not enough Stars to transfer the NFT. Balance {stars}★, need {fee}★.",
 }
 

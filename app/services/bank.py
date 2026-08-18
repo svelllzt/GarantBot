@@ -11,6 +11,7 @@ from app.pyro import Client, RawUpdateHandler, functions, types
 from app.config import Settings
 from app.i18n import t
 from app.storage import DEAL_CLOSED, DEAL_PAID, DEAL_REVIEW, NFT_TRANSFERRED, Storage
+from app.services.fragment import StarsBuyer
 from app.util import nft_title
 
 log = logging.getLogger("bank")
@@ -90,6 +91,8 @@ class BankAccount:
         self._low_alerted = False
         self._watch_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
+        self.stars_buyer = StarsBuyer(settings)
+        self.stars_buyer.on_event = self._notify_admins
 
     @property
     def mention(self) -> str:
@@ -177,6 +180,7 @@ class BankAccount:
                 await self._first_login()
             if not self.enabled():
                 log.warning("bank account skipped: empty [bank] session (run python main.py in a console to log in)")
+                await self.stars_buyer.start()
                 return
         self.client = Client(
             name="bank",
@@ -205,6 +209,7 @@ class BankAccount:
                 log.exception("failed to write [bank] username")
         log.info("bank account @%s id=%s", self.me.username, self.me.id)
         await self.refresh_stars()
+        await self.stars_buyer.start()
         await self._maybe_alert_stars()
         self._watch_task = asyncio.create_task(self._watch(), name="bank-stars")
 
@@ -333,16 +338,26 @@ class BankAccount:
                 fee = _invoice_stars(form) or self.fee
                 stars = await self.stars()
                 if stars is not None and stars < fee:
+                    if await self._ensure_stars(fee):
+                        stars = self._stars
+                        form = await self.client.invoke(get_form(invoice=invoice))
+                        fee = _invoice_stars(form) or fee
+                if stars is not None and stars < fee:
                     await self._alert_no_stars(fee, stars)
                     return "no_stars"
                 try:
                     await self.client.invoke(send_form(form_id=form.form_id, invoice=invoice))
                 except Exception as pay_exc:
                     if "BALANCE_TOO_LOW" in _err_text(pay_exc):
-                        await self.refresh_stars()
-                        await self._alert_no_stars(fee, self._stars)
-                        return "no_stars"
-                    raise
+                        if await self._ensure_stars(fee):
+                            form = await self.client.invoke(get_form(invoice=invoice))
+                            await self.client.invoke(send_form(form_id=form.form_id, invoice=invoice))
+                        else:
+                            await self.refresh_stars()
+                            await self._alert_no_stars(fee, self._stars)
+                            return "no_stars"
+                    else:
+                        raise
                 if self._stars is not None:
                     self._stars = max(0, self._stars - fee)
                 asyncio.create_task(self._refresh_silent())
@@ -350,6 +365,19 @@ class BankAccount:
         except Exception:
             log.exception("gift transfer failed msg_id=%s to=%s", nft["msg_id"], to_user_id)
             return "fail"
+
+    async def _ensure_stars(self, need: int) -> bool:
+        stars = await self.stars(force=True)
+        if stars is not None and stars >= need:
+            return True
+        if not self.stars_buyer.enabled():
+            return False
+        bought = await self.stars_buyer.buy_for_bank()
+        if not bought:
+            return False
+        await asyncio.sleep(8)
+        stars = await self.refresh_stars()
+        return stars is not None and stars >= need
 
     async def _refresh_silent(self) -> None:
         try:
@@ -365,6 +393,8 @@ class BankAccount:
                 if self.client is None:
                     continue
                 await self.refresh_stars()
+                if self._stars is not None and self._stars < self.fee:
+                    await self._ensure_stars(self.fee)
                 await self._maybe_alert_stars()
                 await self._retry_pending()
             except asyncio.CancelledError:
@@ -377,7 +407,8 @@ class BankAccount:
             return
         stars = await self.stars()
         if stars is not None and stars < self.fee:
-            return
+            if not await self._ensure_stars(self.fee):
+                return
         pending = await self.db.pending_nft_sends()
         for deal in pending:
             fresh = await self.db.get_deal(deal["id"])
@@ -441,6 +472,7 @@ class BankAccount:
             min=self.min_stars,
             fee=fee,
             pending=pending,
+            pack=self.stars_buyer.pack(),
         )
 
     async def _notify_admins(self, key: str, **kwargs: Any) -> None:

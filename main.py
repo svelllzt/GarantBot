@@ -16,7 +16,7 @@ from app.services.ton import TonEscrow
 from app.storage import Storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-log = logging.getLogger("garant")
+log = logging.getLogger("phantom")
 
 
 async def main() -> None:

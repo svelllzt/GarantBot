@@ -39,5 +39,19 @@ gas = 0.05
 min_deal = 0.1
 min_rub = 1
 
+[fragment]
+; Отдельный кошелёк (не [ton] mnemonic) для автопокупки Stars за TON на банковский аккаунт.
+; Если Stars не хватает на передачу NFT — покупает pack из stars=100.
+mnemonic =
+; Ключ tonconsole.com (tonapi) или toncenter. Пустой — берётся [ton] api_key.
+api_key =
+; Cookies Fragment: JSON или stel_ssid=...; stel_dt=...; stel_token=...; stel_ton_token=...
+; Пустые cookies + mnemonic + консоль: python main.py сам логинит Fragment (телефон или QR).
+cookies =
+wallet = V4R2
+stars = 100
+; toncenter или tonapi
+provider = toncenter
+
 [db]
 path = data/garant.db

@@ -1,6 +1,6 @@
-# Garant
+# Phantom OTC
 
-Escrow-бот на aiogram 3. Банковский аккаунт для NFT-подарков — pyrogram (pyrofork).
+Escrow-бот **Phantom OTC** на aiogram 3. Банковский аккаунт для NFT-подарков — pyrogram (pyrofork).
 
 ## Запуск
 
@@ -63,7 +63,7 @@ Telethon-сессия сюда не подойдёт, только Pyrogram/pyro
 
 `tgcrypto` ставить не обязательно: без него pyrogram чуть медленнее, на логике это не сказывается.
 
-Передача уникального подарка списывает Telegram Stars с банковского аккаунта (обычно 25★). В `/admin` → Статистика видно текущий баланс, сколько передач ещё хватит и сколько NFT ждут отправки. Если Stars мало — админам приходит алерт. После пополнения Stars на том же аккаунте бот сам дошлёт зависшие подарки (раз в несколько минут). Купить Stars за пользователя бот не может — пополняйте баланс Stars в Telegram у банковского юзера.
+Передача уникального подарка списывает Telegram Stars с банковского аккаунта (обычно 25★). В `/admin` → Статистика видно текущий баланс, сколько передач ещё хватит и сколько NFT ждут отправки. Если Stars мало, бот докупает **100★ за TON** через Fragment на username банка (отдельный кошелёк в `[fragment]`, не эскроу `[ton] mnemonic`). Если автопокупка не сработала — админам приходит алерт. После появления Stars бот сам дошлёт зависшие подарки.
 
 В `config.ini` `[bank]`:
 
@@ -71,6 +71,28 @@ Telethon-сессия сюда не подойдёт, только Pyrogram/pyro
 transfer_stars = 25
 min_stars = 50
 ```
+
+## Fragment — автопокупка Stars
+
+Библиотека `fragment-api-py`. Кошелёк **только для Stars**, не путать с TON-эскроу.
+
+```
+[fragment]
+mnemonic =
+api_key =
+cookies =
+wallet = V4R2
+stars = 100
+provider = toncenter
+```
+
+- `mnemonic` — seed кошелька, с которого платят TON за Stars (12/18/24 слова).
+- `api_key` — tonconsole.com (`provider = tonapi`) или toncenter. Пустой ключ берётся из `[ton] api_key`.
+- `cookies` — сессия Fragment: JSON или `stel_ssid=...; stel_dt=...; stel_token=...; stel_ton_token=...`.
+- Если `mnemonic` задан, cookies пустые и бот запущен в консоли — `python main.py` сам логинит Fragment (телефон или QR) и запишет cookies в ini.
+- Получатель пакета — `[bank] username`. Покупка: 100★, `payment_method=ton`.
+
+Без `[fragment] mnemonic` автопокупка выключена, NFT-гарант работает как раньше.
 
 ## База пользователей
 
