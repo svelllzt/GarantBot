@@ -352,7 +352,7 @@ async def close_after_review(db: Storage, deal_id: int) -> None:
     await db.claim_deal(deal_id, DEAL_REVIEW, status=DEAL_CLOSED)
 
 
-async def cancel_mutual(db: Storage, deal_id: int, ton=None) -> None:
+async def cancel_mutual(db: Storage, deal_id: int, ton=None, by_user: int | None = None) -> None:
     deal = await db.get_deal(deal_id)
     if deal is None:
         raise DealError("error")
@@ -361,21 +361,84 @@ async def cancel_mutual(db: Storage, deal_id: int, ton=None) -> None:
     if deal["nft_sent"]:
         raise DealError("deal_cancel_denied")
     if deal["status"] == DEAL_LISTED:
-        if not await db.claim_deal(deal_id, DEAL_LISTED, status=DEAL_CANCELLED):
+        if not await db.claim_deal(deal_id, DEAL_LISTED, status=DEAL_CANCELLED, cancel_by=None):
             raise DealError("error")
         await _release_nft(db, deal)
         return
-    frozen = deal["status"] == DEAL_OPEN
+    if deal["status"] != DEAL_OPEN:
+        raise DealError("deal_cancel_denied")
+    if by_user is None:
+        raise DealError("error")
+    if by_user not in (deal["seller_id"], deal["buyer_id"]):
+        raise DealError("error")
+    asked = _cancel_asked(deal)
+    other = deal["seller_id"] if by_user == deal["buyer_id"] else deal["buyer_id"]
+    if not asked or asked != other:
+        raise DealError("error")
+    frozen = True
     prev = deal["status"]
-    if not await db.claim_deal(deal_id, prev, status=DEAL_CANCELLED):
+    if not await db.claim_deal(deal_id, prev, status=DEAL_CANCELLED, cancel_by=None):
         raise DealError("error")
     if frozen:
         try:
             await _unfreeze_buyer(db, deal)
         except Exception:
-            await db.claim_deal(deal_id, DEAL_CANCELLED, status=prev)
+            await db.claim_deal(deal_id, DEAL_CANCELLED, status=prev, cancel_by=asked)
             raise DealError("error")
     await _release_nft(db, deal)
+
+
+def _party(deal, user_id: int) -> bool:
+    return user_id in (deal["seller_id"], deal["buyer_id"])
+
+
+def _cancel_asked(deal) -> int:
+    try:
+        return int(deal["cancel_by"] or 0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        return 0
+
+
+async def request_cancel(db: Storage, deal_id: int, user_id: int) -> str:
+    deal = await db.get_deal(deal_id)
+    if deal is None or not _party(deal, user_id):
+        raise DealError("error")
+    if deal["status"] in {DEAL_DISPUTE, DEAL_REVIEW, DEAL_CLOSED}:
+        raise DealError("deal_cancel_denied")
+    if deal["nft_sent"]:
+        raise DealError("deal_cancel_denied")
+    if deal["status"] == DEAL_LISTED:
+        if listing_owner(deal) != user_id:
+            raise DealError("error")
+        await cancel_mutual(db, deal_id)
+        return "done"
+    if deal["status"] == DEAL_PENDING:
+        await decline(db, deal_id, user_id)
+        return "done"
+    if deal["status"] != DEAL_OPEN:
+        raise DealError("deal_cancel_denied")
+    other = deal["seller_id"] if user_id == deal["buyer_id"] else deal["buyer_id"]
+    asked = _cancel_asked(deal)
+    if asked and asked == other:
+        await cancel_mutual(db, deal_id, by_user=user_id)
+        return "done"
+    await db.touch_deal(deal_id, cancel_by=user_id)
+    return "wait"
+
+
+async def confirm_cancel(db: Storage, deal_id: int, user_id: int) -> None:
+    await cancel_mutual(db, deal_id, by_user=user_id)
+
+
+async def refuse_cancel(db: Storage, deal_id: int, user_id: int) -> int:
+    deal = await db.get_deal(deal_id)
+    if deal is None or not _party(deal, user_id):
+        raise DealError("error")
+    asked = _cancel_asked(deal)
+    if not asked or asked == user_id:
+        raise DealError("error")
+    await db.touch_deal(deal_id, cancel_by=None)
+    return asked
 
 
 async def open_dispute(db: Storage, deal_id: int, user_id: int, reason: str = "") -> None:

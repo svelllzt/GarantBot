@@ -153,10 +153,12 @@ async def _maybe_send_nft(bot, db: Storage, bank, deal, lang: str) -> str | None
     if not deal or not is_nft_deal(deal) or not deal["nft_id"] or deal["nft_sent"] or not deal["buyer_id"]:
         return None
     nft = await db.get_nft(deal["nft_id"])
+    if not await db.claim_nft_sent(deal["id"]):
+        return None
     result = await bank.transfer(nft, deal["buyer_id"]) if nft else "fail"
     if result == "ok":
-        await db.touch_deal(deal["id"], nft_sent=1)
         return "deal_nft_sent"
+    await db.revert_nft_sent(deal["id"])
     if result in {"no_stars", "offline"}:
         return "deal_nft_no_stars"
     return "deal_nft_fail"
@@ -445,17 +447,6 @@ async def take_deal(call: CallbackQuery, callback_data: DealCB, db: Storage, lan
         return
     try:
         await svc.take_listing(db, callback_data.i, call.from_user.id)
-    except DealError as exc:
-        await call.answer(svc.err_text(lang, exc), show_alert=True)
-        return
-    deal = await db.get_deal(callback_data.i)
-    await _after_take(call, db, deal, lang, settings, theme, ton, bank=bank)
-
-
-@router.callback_query(DealCB.filter(F.a == "nfttake"))
-async def take_nft_listing(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton, bank):
-    try:
-        await svc.take_listing(db, callback_data.i, call.from_user.id, nft_id=callback_data.x)
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
@@ -861,7 +852,11 @@ async def cancel_ask(call: CallbackQuery, callback_data: DealCB, db: Storage, la
         if listing_owner(deal) != call.from_user.id:
             await call.answer(t(lang, "error"), show_alert=True)
             return
-        await svc.cancel_mutual(db, deal["id"])
+        try:
+            await svc.cancel_mutual(db, deal["id"])
+        except DealError as exc:
+            await call.answer(svc.err_text(lang, exc), show_alert=True)
+            return
         await ch.mark(call.bot, settings, deal, "channel_closed")
         await paint(
             call,
@@ -872,9 +867,13 @@ async def cancel_ask(call: CallbackQuery, callback_data: DealCB, db: Storage, la
         )
         return
     if deal["status"] == DEAL_PENDING:
-        await svc.decline(db, deal["id"], call.from_user.id)
+        try:
+            await svc.decline(db, deal["id"], call.from_user.id)
+        except DealError as exc:
+            await call.answer(svc.err_text(lang, exc), show_alert=True)
+            return
         other = deal["seller_id"] if call.from_user.id == deal["buyer_id"] else deal["buyer_id"]
-        other_user = await db.get_user(other)
+        other_user = await db.get_user(other) if other else None
         await paint(call, t(lang, "deal_cancel_ok"), settings=settings)
         if other and other_user:
             try:
@@ -885,6 +884,9 @@ async def cancel_ask(call: CallbackQuery, callback_data: DealCB, db: Storage, la
             await call.message.answer(t(lang, "menu"), reply_markup=await home_kb(db, call.from_user.id, lang, theme))
         except Exception:
             pass
+        return
+    if deal["status"] != DEAL_OPEN or call.from_user.id not in (deal["seller_id"], deal["buyer_id"]):
+        await call.answer(t(lang, "error"), show_alert=True)
         return
     await call.message.answer(t(lang, "deal_cancel_ask"), reply_markup=confirm_kb(lang, theme, "cansend", deal["id"]))
     await call.answer()
@@ -899,24 +901,40 @@ async def cancel_send(call: CallbackQuery, callback_data: DealCB, db: Storage, l
     if deal is None or call.from_user.id not in (deal["seller_id"], deal["buyer_id"]):
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    if deal["status"] in {DEAL_DISPUTE, DEAL_REVIEW, DEAL_CLOSED}:
-        await call.answer(t(lang, "deal_cancel_denied"), show_alert=True)
+    try:
+        result = await svc.request_cancel(db, callback_data.i, call.from_user.id)
+    except DealError as exc:
+        await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
-    if deal["nft_sent"]:
-        await call.answer(t(lang, "deal_cancel_denied"), show_alert=True)
+    if result == "done":
+        for uid in (deal["seller_id"], deal["buyer_id"]):
+            if not uid:
+                continue
+            user = await db.get_user(uid)
+            if not user:
+                continue
+            try:
+                await call.bot.send_message(uid, t(user["lang"] or "ru", "deal_cancel_ok"), reply_markup=await home_kb(db, uid, user["lang"] or "ru", theme))
+            except Exception:
+                pass
+        await call.answer()
         return
     other = deal["seller_id"] if call.from_user.id == deal["buyer_id"] else deal["buyer_id"]
-    other_user = await db.get_user(other)
+    other_user = await db.get_user(other) if other else None
+    await paint(call, t(lang, "deal_cancel_sent"))
     if other_user is None:
-        await call.answer(t(lang, "error"), show_alert=True)
+        await call.answer()
         return
     other_lang = other_user["lang"] or "ru"
-    await paint(call, t(lang, "deal_cancel_sent"))
-    await call.bot.send_message(
-        other,
-        t(other_lang, "deal_cancel_ask"),
-        reply_markup=peer_cancel_kb(other_lang, theme, deal["id"]),
-    )
+    try:
+        await call.bot.send_message(
+            other,
+            t(other_lang, "deal_cancel_ask"),
+            reply_markup=peer_cancel_kb(other_lang, theme, deal["id"]),
+        )
+    except Exception:
+        pass
+    await call.answer()
 
 
 @router.callback_query(DealCB.filter(F.a == "canok"))
@@ -926,7 +944,7 @@ async def cancel_ok(call: CallbackQuery, callback_data: DealCB, db: Storage, lan
         await call.answer(t(lang, "error"), show_alert=True)
         return
     try:
-        await svc.cancel_mutual(db, callback_data.i, ton)
+        await svc.confirm_cancel(db, callback_data.i, call.from_user.id)
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
@@ -944,8 +962,24 @@ async def cancel_ok(call: CallbackQuery, callback_data: DealCB, db: Storage, lan
 
 
 @router.callback_query(DealCB.filter(F.a == "canno"))
-async def cancel_no(call: CallbackQuery, lang: str):
+async def cancel_no(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str):
+    deal = await db.get_deal(callback_data.i)
+    if deal is None:
+        await call.answer(t(lang, "cancelled"))
+        return
+    try:
+        asked = await svc.refuse_cancel(db, callback_data.i, call.from_user.id)
+    except DealError:
+        await call.answer(t(lang, "cancelled"))
+        return
     await call.answer(t(lang, "cancelled"))
+    if asked and asked != call.from_user.id:
+        other = await db.get_user(asked)
+        if other:
+            try:
+                await call.bot.send_message(asked, t(other["lang"] or "ru", "cancelled"))
+            except Exception:
+                pass
 
 
 @router.callback_query(DealCB.filter(F.a == "dis"))

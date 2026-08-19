@@ -12,6 +12,47 @@ from app.config import Settings
 log = logging.getLogger("ton")
 
 
+def ton_comment_total(payload, comment: str) -> Optional[float]:
+    if not isinstance(payload, dict):
+        return None
+    want = (comment or "").strip()
+    if not want:
+        return None
+    total = 0
+    found = False
+    seen: set = set()
+    for tx in payload.get("result") or []:
+        if not isinstance(tx, dict):
+            continue
+        inn = tx.get("in_msg") or {}
+        if not isinstance(inn, dict):
+            continue
+        msg = (inn.get("message") or inn.get("comment") or "").strip()
+        if msg != want:
+            continue
+        try:
+            nano = int(inn.get("value") or 0)
+        except (TypeError, ValueError):
+            continue
+        if nano <= 0:
+            continue
+        tid = tx.get("transaction_id")
+        if isinstance(tid, dict):
+            key = (tid.get("hash"), tid.get("lt"))
+        else:
+            key = tx.get("hash") or tid
+        if key is None:
+            key = ("anon", id(tx))
+        if key in seen:
+            continue
+        seen.add(key)
+        total += nano
+        found = True
+    if not found:
+        return None
+    return total / 1_000_000_000
+
+
 async def incoming_by_comment(settings: Settings, comment: str, address: str | None = None) -> Optional[float]:
     target = (address or settings.ton_address or "").strip()
     if not target or not comment:
@@ -30,16 +71,7 @@ async def incoming_by_comment(settings: Settings, comment: str, address: str | N
         return None
     if not payload.get("ok"):
         return None
-    for tx in payload.get("result") or []:
-        inn = tx.get("in_msg") or {}
-        msg = (inn.get("message") or inn.get("comment") or "").strip()
-        if msg != comment:
-            continue
-        nano = int(inn.get("value") or 0)
-        if nano <= 0:
-            continue
-        return nano / 1_000_000_000
-    return None
+    return ton_comment_total(payload, comment)
 
 
 USDT_MASTER = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
@@ -58,6 +90,66 @@ def _payload_text(value) -> str:
                 return str(raw).strip()
         return ""
     return str(value).strip()
+
+
+def _usdt_rows(payload) -> list:
+    if not isinstance(payload, dict):
+        return []
+    rows = payload.get("jetton_transfers") or payload.get("transfers") or payload.get("result") or []
+    if isinstance(rows, dict):
+        rows = rows.get("jetton_transfers") or rows.get("transfers") or []
+    return list(rows or [])
+
+
+def _usdt_row_matches(row: dict, want: str) -> bool:
+    msg = " ".join(
+        part
+        for part in (
+            _payload_text(row.get("comment")),
+            _payload_text(row.get("decoded_comment")),
+            _payload_text(row.get("decoded_forward_payload")),
+            _payload_text(row.get("forward_payload")),
+        )
+        if part
+    )
+    return (
+        want in msg.split()
+        or want == _payload_text(row.get("comment"))
+        or want == _payload_text(row.get("decoded_comment"))
+        or want == _payload_text(row.get("decoded_forward_payload"))
+    )
+
+
+def usdt_comment_total(payload, comment: str) -> Optional[float]:
+    want = (comment or "").strip()
+    if not want:
+        return None
+    total = 0
+    found = False
+    seen: set = set()
+    for row in _usdt_rows(payload):
+        if not isinstance(row, dict):
+            continue
+        if not _usdt_row_matches(row, want):
+            continue
+        raw_amt = row.get("amount") or row.get("jetton_amount") or 0
+        try:
+            units = int(str(raw_amt).split(".")[0])
+        except (TypeError, ValueError):
+            continue
+        if units <= 0:
+            continue
+        key = row.get("transaction_hash") or row.get("query_id") or row.get("trace_id")
+        if key is None:
+            key = ("anon", id(row))
+        if key in seen:
+            continue
+        seen.add(key)
+        total += units
+        found = True
+    if not found:
+        return None
+    return total / (10 ** USDT_DECIMALS)
 
 
 async def incoming_usdt_by_comment(settings: Settings, comment: str, address: str | None = None) -> Optional[float]:
@@ -83,34 +175,7 @@ async def incoming_usdt_by_comment(settings: Settings, comment: str, address: st
     except Exception:
         log.exception("toncenter jetton request failed")
         return None
-    rows = payload.get("jetton_transfers") or payload.get("transfers") or payload.get("result") or []
-    if isinstance(rows, dict):
-        rows = rows.get("jetton_transfers") or rows.get("transfers") or []
-    want = comment.strip()
-    for row in rows or []:
-        if not isinstance(row, dict):
-            continue
-        msg = " ".join(
-            part
-            for part in (
-                _payload_text(row.get("comment")),
-                _payload_text(row.get("decoded_comment")),
-                _payload_text(row.get("decoded_forward_payload")),
-                _payload_text(row.get("forward_payload")),
-            )
-            if part
-        )
-        if want not in msg.split() and want != _payload_text(row.get("comment")) and want != _payload_text(row.get("decoded_comment")) and want != _payload_text(row.get("decoded_forward_payload")):
-            continue
-        raw_amt = row.get("amount") or row.get("jetton_amount") or 0
-        try:
-            units = int(str(raw_amt).split(".")[0])
-        except (TypeError, ValueError):
-            continue
-        if units <= 0:
-            continue
-        return units / (10 ** USDT_DECIMALS)
-    return None
+    return usdt_comment_total(payload, comment)
 
 
 def ton_to_currency(ton_amount: float, settings: Settings, requested: float) -> Optional[float]:

@@ -92,7 +92,7 @@ async def main() -> None:
         assert info["users"] >= 2
         assert "deals" in info
         deal_cols = await db._columns("deals")
-        for name in ("category", "title", "channel_msg_id", "kind", "dispute_reason", "dispute_by", "nft_sent", "currency", "secret"):
+        for name in ("category", "title", "channel_msg_id", "kind", "dispute_reason", "dispute_by", "nft_sent", "currency", "secret", "cancel_by"):
             assert name in deal_cols, name
 
         missing = set(RU) - set(EN)
@@ -136,6 +136,28 @@ async def main() -> None:
         assert ton_to_currency(10.0, _Rate(), 100.0) == 100.0
         assert ton_to_currency(5.0, _Rate(), 100.0) is None
 
+        from app.services.ton import ton_comment_total, usdt_comment_total
+
+        split_ton = {
+            "ok": True,
+            "result": [
+                {"transaction_id": {"hash": "a", "lt": "1"}, "in_msg": {"message": "Gsplit", "value": "40000000"}},
+                {"transaction_id": {"hash": "b", "lt": "2"}, "in_msg": {"message": "Gsplit", "value": "70000000"}},
+                {"transaction_id": {"hash": "c", "lt": "3"}, "in_msg": {"message": "other", "value": "9000000000"}},
+            ],
+        }
+        assert abs(ton_comment_total(split_ton, "Gsplit") - 0.11) < 1e-9
+        assert ton_comment_total(split_ton, "missing") is None
+        split_usdt = {
+            "jetton_transfers": [
+                {"transaction_hash": "h1", "comment": "Usplit", "amount": "1000000"},
+                {"transaction_hash": "h2", "comment": "Usplit", "amount": "2500000"},
+                {"transaction_hash": "h3", "comment": "other", "amount": "9000000"},
+            ]
+        }
+        assert abs(usdt_comment_total(split_usdt, "Usplit") - 3.5) < 1e-9
+        assert usdt_comment_total(split_usdt, "missing") is None
+
         await db.credit_asset(2, "USDT", 50)
         paid = await db.create_deal(1, 2, status=DEAL_OPEN, amount=10)
         assert await db.claim_deal(paid, DEAL_OPEN, status=DEAL_CLOSED)
@@ -143,6 +165,11 @@ async def main() -> None:
         dep = await db.create_deposit(2, 5, "G2test1", asset="USDT")
         assert await db.claim_deposit(dep, "done")
         assert not await db.claim_deposit(dep, "done")
+        try:
+            await db.create_deposit(2, 1, "G2test1", asset="USDT")
+            raise AssertionError("duplicate deposit comment must fail")
+        except Exception:
+            pass
         other = await db.add_nft(1, gift_id="g2", slug="slug", title="Dup", num=1, msg_id=99, from_user_id=1, is_unique=True)
         assert other is None
         nft_b = await db.add_nft(1, gift_id="g3", slug="other", title="B", num=2, msg_id=100, from_user_id=1, is_unique=True)
@@ -327,6 +354,44 @@ async def main() -> None:
         await db.touch_deal(offer_e, status=DEAL_CANCELLED)
         await db.unfreeze_asset(2, "USDT", 2)
         await db.set_nft_status(nft_e, NFT_AVAILABLE, deal_id=None)
+
+        await db.upsert_user(7, "s7", "S7")
+        await db.upsert_user(8, "b8", "B8")
+        await db.credit_asset(8, "USDT", 20)
+        mut_id = await dsvc.create_listing(db, 7, "goods", "Item", 10, "desc", currency="USDT", secret="hidden")
+        await dsvc.take_listing(db, mut_id, 8)
+        assert abs(db.frozen_of(await db.get_user(8), "USDT") - 10) < 1e-9
+        try:
+            await dsvc.confirm_cancel(db, mut_id, 8)
+            raise AssertionError("buyer must not cancel alone")
+        except DealErr:
+            pass
+        assert (await db.get_deal(mut_id))["status"] == DEAL_OPEN
+        assert await dsvc.request_cancel(db, mut_id, 7) == "wait"
+        assert int((await db.get_deal(mut_id))["cancel_by"] or 0) == 7
+        try:
+            await dsvc.confirm_cancel(db, mut_id, 7)
+            raise AssertionError("initiator must not confirm own cancel")
+        except DealErr:
+            pass
+        await dsvc.confirm_cancel(db, mut_id, 8)
+        cancelled = await db.get_deal(mut_id)
+        assert cancelled["status"] == DEAL_CANCELLED
+        assert abs(db.frozen_of(await db.get_user(8), "USDT")) < 1e-9
+
+        await db.credit_asset(8, "USDT", 10)
+        mut2 = await dsvc.create_listing(db, 7, "goods", "Item2", 6, "desc", currency="USDT")
+        await dsvc.take_listing(db, mut2, 8)
+        assert await dsvc.request_cancel(db, mut2, 7) == "wait"
+        assert await dsvc.request_cancel(db, mut2, 8) == "done"
+        assert (await db.get_deal(mut2))["status"] == DEAL_CANCELLED
+        assert abs(db.frozen_of(await db.get_user(8), "USDT")) < 1e-9
+
+        sent_id = await db.create_deal(7, 8, status=DEAL_OPEN, amount=1)
+        assert await db.claim_nft_sent(sent_id)
+        assert not await db.claim_nft_sent(sent_id)
+        await db.revert_nft_sent(sent_id)
+        assert await db.claim_nft_sent(sent_id)
 
         wd_cols = await db._columns("withdrawals")
         assert "tx_hash" in wd_cols

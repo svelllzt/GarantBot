@@ -140,15 +140,6 @@ def asset_pick_kb(lang: str, theme: Theme, action: str) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def role_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    theme.add(kb, "deal_buyer", lang, callback_data=DealCB(a="role", x=1).pack())
-    theme.add(kb, "deal_seller", lang, callback_data=DealCB(a="role", x=0).pack())
-    theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
-    kb.adjust(2, 1)
-    return kb.as_markup()
-
-
 def deal_mode_kb(lang: str, theme: Theme, channel_url: str = "", public: bool = True) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     theme.add(kb, "deal_private", lang, callback_data=DealCB(a="mode", x=0).pack())
@@ -302,14 +293,6 @@ def deposit_kb(lang: str, theme: Theme, deposit_id: int) -> InlineKeyboardMarkup
     kb = InlineKeyboardBuilder()
     theme.add(kb, "deposit_check", lang, callback_data=WalletCB(a="chk", i=deposit_id).pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
-    kb.adjust(1)
-    return kb.as_markup()
-
-
-def withdraw_method_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    theme.add(kb, "req_ton", lang, callback_data=WalletCB(a="wdm", m="ton").pack())
-    theme.add(kb, "btn_cancel", lang, callback_data=NavCB(a="fsmx").pack())
     kb.adjust(1)
     return kb.as_markup()
 

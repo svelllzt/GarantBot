@@ -4,7 +4,7 @@ from html import escape
 from aiogram.types import CallbackQuery, Message
 
 from app.i18n import t
-from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_LISTED, DEAL_PENDING, KIND_TON_RUB
+from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_LISTED, DEAL_PENDING
 
 _AMOUNT = re.compile(r"^\d+([.,]\d{1,6})?$")
 _TON_AMT = re.compile(r"^\d+([.,]\d{1,9})?$")

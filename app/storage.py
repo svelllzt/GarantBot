@@ -55,6 +55,7 @@ DEAL_FIELDS = {
     "seller_id",
     "currency",
     "secret",
+    "cancel_by",
 }
 WALLET_PENDING = "pending"
 WALLET_SENDING = "sending"
@@ -296,6 +297,7 @@ class Storage:
                 "receipt_id": "TEXT",
                 "currency": "TEXT NOT NULL DEFAULT 'USDT'",
                 "secret": "TEXT",
+                "cancel_by": "INTEGER",
             },
         )
         await self._add_missing(
@@ -345,6 +347,9 @@ class Storage:
         )
         await self.db.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_inv_slug ON inventory(slug) WHERE IFNULL(slug, '') != ''"
+        )
+        await self.db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_dep_comment ON deposits(comment) WHERE IFNULL(comment, '') != ''"
         )
 
     async def execute(self, sql: str, params: Iterable[Any] = ()) -> aiosqlite.Cursor:
@@ -919,6 +924,19 @@ class Storage:
             ),
         )
         return cur.rowcount == 1
+
+    async def claim_nft_sent(self, deal_id: int) -> bool:
+        cur = await self.execute(
+            "UPDATE deals SET nft_sent = 1, updated_at = ? WHERE id = ? AND nft_sent = 0",
+            (now(), deal_id),
+        )
+        return cur.rowcount == 1
+
+    async def revert_nft_sent(self, deal_id: int) -> None:
+        await self.execute(
+            "UPDATE deals SET nft_sent = 0, updated_at = ? WHERE id = ? AND nft_sent = 1",
+            (now(), deal_id),
+        )
 
     async def create_deposit(self, user_id: int, amount: float, comment: str, asset: str = "USDT") -> int:
         cur = await self.execute(
