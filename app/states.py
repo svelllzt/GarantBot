@@ -2,28 +2,21 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class Requisites(StatesGroup):
-    card = State()
-    phone = State()
-    bank = State()
     ton = State()
 
 
 class Wallet(StatesGroup):
     deposit_amount = State()
     withdraw_amount = State()
+    withdraw_ton = State()
 
 
 class DealFlow(StatesGroup):
     username = State()
     price = State()
+    secret = State()
     description = State()
     review = State()
-    ton_amount = State()
-    rub_amount = State()
-    buyer_ton = State()
-    listing_title = State()
-    listing_price = State()
-    receipt_pdf = State()
     dispute_reason = State()
     dispute_evidence = State()
 
@@ -46,3 +39,5 @@ class AdminFlow(StatesGroup):
     screen_photo = State()
     dispute_reply = State()
     verdict_note = State()
+    cfg_value = State()
+    adm_add = State()

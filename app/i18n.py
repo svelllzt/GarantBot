@@ -40,15 +40,13 @@ RU = {
         "✨ Ник: <b>{nick}</b>\n"
         "🔗 Username: @{username}\n"
         "🤝 Сделок: <b>{deals}</b>\n"
-        "💰 Баланс: <b>{balance} {currency}</b>\n\n"
-        "💳 Карта: {card}\n"
-        "📱 Телефон: {phone}\n"
-        "🏦 Банк: {bank}\n"
-        "💎 TON: {ton}"
+        "💵 USDT: <b>{usdt}</b> (заморожено {frozen_usdt})\n"
+        "💎 TON: <b>{ton_bal}</b> (заморожено {frozen_ton})\n"
+        "💎 Адрес вывода: {ton}"
     ),
     "not_set": "не указан",
     "btn_req": "Реквизиты",
-    "req_menu": "💳 <b>Реквизиты для вывода</b>\n\nИх видите только вы и администратор.",
+    "req_menu": "💎 <b>Адрес вывода</b>\n\nТолько TON-сеть. Сюда уходят TON и USDT.",
     "req_card": "Карта",
     "req_phone": "Телефон и банк",
     "req_ton": "TON-адрес",
@@ -84,12 +82,11 @@ RU = {
     "min_amount": "⚠️ Минимум {min} {currency}.",
     "about": (
         "ℹ️ <b>Phantom OTC</b>\n\n"
-        "Безопасные сделки: аккаунты, NFT-подарки, товар, TON.\n\n"
-        "• Оплата с баланса — деньги у гаранта до подтверждения, если у продавца нет реквизитов\n"
-        "• Аккаунты и товар при указанных реквизитах — перевод продавцу, чек PDF, без пополнения баланса\n"
-        "• NFT за рубли — по реквизитам продавца, чек только PDF\n"
-        "• TON → рубли через кошелёк V4\n"
-        "• Памятка по категории при открытии сделки\n\n"
+        "Безопасные сделки в TON и USDT: аккаунты, NFT-подарки, товар.\n\n"
+        "• Пополнение TON или USDT через сеть TON. Монеты хранятся в боте\n"
+        "• Когда сделка стартует, сумма замораживается и вывести её нельзя\n"
+        "• Покупатель подтверждает получение — продавец получает монеты минус комиссия\n"
+        "• Любая сторона может открыть спор, решение принимает администратор\n\n"
         "💸 Комиссия: <b>{commission}%</b> с продавца\n"
         "💬 Поддержка: @{support}\n"
         "{chat}"
@@ -137,19 +134,19 @@ RU = {
         "🛒 Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Продавец: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Сумма: <b>{amount}</b>\n"
+        "🔑 Данные: {secret}\n"
         "📝 Условия: {desc}\n"
         "📌 Статус: <b>{status}</b>"
     ),
     "deal_opened_nft": (
-        "🎁 <b>Сделка #{id}</b> · NFT за рубли\n"
+        "🎁 <b>Сделка #{id}</b> · NFT\n"
         "📂 {cat}\n"
         "🏷 {title}\n\n"
         "🛒 Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Продавец: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Цена: <b>{amount}</b>\n"
         "🎁 NFT: {nft}\n"
-        "💳 Реквизиты продавца:\n{req}\n"
-        "📄 Чек: {receipt}\n"
+        "🔑 Данные: {secret}\n"
         "📝 Условия: {desc}\n"
         "📌 Статус: <b>{status}</b>"
     ),
@@ -181,7 +178,7 @@ RU = {
         "📌 Статус: <b>{status}</b>"
     ),
     "deal_status_pending": "⏳ ожидает принятия",
-    "deal_status_open": "🟢 открыта",
+    "deal_status_open": "🔒 сумма заморожена",
     "deal_status_wait_ton": "⏳ ждёт TON на эскроу",
     "deal_status_funded": "🔒 TON на гаранте, ждут рубли",
     "deal_status_rub_sent": "💸 рубли отправлены, ждут подтверждения",
@@ -380,9 +377,9 @@ RU = {
     "deal_take": "Открыть сделку",
     "deal_manual_btn": "Памятка",
     "deal_ask_cat": "📂 <b>Категория сделки</b>",
-    "deal_ask_group": "🛡️ <b>Что продаёте или покупаете?</b>",
+    "deal_ask_group": "🛡️ <b>Что продаёте?</b>",
     "deal_ask_title": "🏷 Короткое название объявления, как в канале. Например: Roblox 1200 Robux, почта отвязана.",
-    "deal_list_ok": "✅ Объявление #{id} в канале. Когда покупатель откроет сделку, обоим придёт памятка.",
+    "deal_list_ok": "✅ Объявление #{id} в канале. Памятка придёт покупателю, когда он откроет сделку.",
     "deal_list_ok_buy": "✅ Объявление #{id} в канале. Когда продавец откроет сделку, обоим придёт памятка.",
     "deal_list_no_channel": "📣 Канал не задан в config.ini. Объявление всё равно в витрине бота.",
     "deal_list_ton": "⚠️ TON → рубли только напрямую с человеком, не в канал.",
@@ -422,7 +419,7 @@ RU = {
         "💼 Продавец: @{seller}\n"
         "💰 Цена: <b>{amount}</b>\n\n"
         "{desc}\n\n"
-        "Оплата по реквизитам продавца. Покупатель присылает чек PDF. Нажмите «Открыть в боте»."
+        "Оплата TON или USDT через бота-гаранта. Нажмите «Открыть в боте»."
     ),
     "channel_listing_nft_buy": (
         "🎁 <b>Куплю NFT #{id}</b> · {cat}\n"
@@ -435,7 +432,7 @@ RU = {
     "channel_open": "🛡️ Открыть в боте",
     "channel_taken": "🔒 Сделку открыли, объявление снято.",
     "channel_closed": "🔒 Объявление снято.",
-    "deal_taken_seller": "🛒 Покупатель @{username} открыл объявление #{id}. Смотрите памятку и ждите оплату.",
+    "deal_taken_seller": "🛒 Покупатель @{username} открыл объявление #{id}. Сумма заморожена на гаранте.",
     "deal_taken_buyer": "💼 Продавец @{username} откликнулся на объявление #{id}. Смотрите памятку.",
     "faq_title": "❓ <b>F.A.Q</b>\n\nОтветы на частые вопросы.",
     "faq_empty": "❓ Пока нет статей. Администратор добавит их в админке.",
@@ -525,6 +522,48 @@ RU = {
     "admin_fragment_off": "выкл.",
     "admin_fragment_wait": "не готово (cookies / ключ / библиотека)",
     "admin_nft_no_stars": "Сделка #{id}: не хватило Stars на передачу NFT. Баланс {stars}★, нужно {fee}★.",
+    "btn_admin": "Админка",
+    "deal_ask_currency": "💎 <b>Валюта сделки</b>\n\nTON или USDT. Покупатель должен пополнить этот актив.",
+    "deal_cur_ton": "TON",
+    "deal_cur_usdt": "USDT",
+    "deal_ask_secret": "🔑 Данные от товара (логин, пароль, почта). Покупатель увидит их после заморозки суммы.",
+    "deal_secret_hidden": "скрыто до старта сделки",
+    "deal_seller_only": "⚠️ Сделку создаёт только продавец.",
+    "deposit_pick": "⬇️ <b>Какой актив пополнить?</b>\n\nОба идут через сеть TON на кошелёк гаранта.",
+    "deposit_asset_ton": "TON",
+    "deposit_asset_usdt": "USDT",
+    "deposit_usdt_net": "Отправьте USDT (jetton) в сети TON на адрес:\n<code>{address}</code>\nВ комментарии / memo укажите код выше.",
+    "withdraw_pick": "⬆️ <b>Какой актив вывести?</b>\n\nВывод только на TON-адрес. Замороженные в сделке монеты недоступны.",
+    "withdraw_frozen": "⚠️ Доступно {have} {currency}, ещё {frozen} заморожено в сделке. Замороженное вывести нельзя.",
+    "admin_wallets": "Кошельки",
+    "admin_sessions": "Сессии",
+    "admin_admins": "Админы",
+    "admin_adm_add": "Добавить админа",
+    "admin_cfg_ton_address": "TON-адрес эскроу",
+    "admin_cfg_ton_mnemonic": "Мнемоника TON",
+    "admin_cfg_ton_api_key": "TON API-ключ",
+    "admin_cfg_usdt_master": "USDT jetton master",
+    "admin_cfg_fragment_mnemonic": "Мнемоника Fragment",
+    "admin_cfg_fragment_wallet": "Кошелёк Fragment",
+    "admin_cfg_fragment_api_key": "API-ключ Fragment",
+    "admin_cfg_bank_api_id": "Bank api_id",
+    "admin_cfg_bank_api_hash": "Bank api_hash",
+    "admin_cfg_bank_session": "Bank session",
+    "admin_cfg_bank_username": "Bank username",
+    "admin_cfg_fragment_cookies": "Fragment cookies",
+    "admin_cfg_ask": "Новое значение для <b>{key}</b>. Отправьте «-», чтобы очистить поле.",
+    "admin_cfg_saved": "✅ Сохранено: {key}",
+    "admin_cfg_reconnect": "Переподключил сервис: {svc}",
+    "admin_cfg_wallets_text": "💎 <b>Кошельки</b>\n\n{lines}\n\nНажмите поле, чтобы заменить значение.",
+    "admin_cfg_sessions_text": "🔐 <b>Сессии</b>\n\n{lines}\n\nНажмите поле, чтобы заменить значение.",
+    "admin_cfg_admins_text": "👑 <b>Админы</b>\n\n{lines}\n\nДобавьте ID или @username. Нельзя удалить последнего админа.",
+    "admin_adm_ask": "Пришлите Telegram ID или @username нового админа.",
+    "admin_adm_added": "✅ Админ {id} добавлен.",
+    "admin_adm_removed": "✅ Админ {id} удалён.",
+    "admin_adm_last": "⚠️ Нельзя удалить последнего админа.",
+    "admin_adm_self": "⚠️ Нельзя удалить себя.",
+    "admin_adm_exists": "⚠️ Этот пользователь уже админ.",
+    "admin_cfg_value": "{title}\n<code>{value}</code>",
 }
 
 EN = {
@@ -533,7 +572,7 @@ EN = {
         "🛡️ <b>Phantom OTC</b>\n"
         "Hey, {name}!\n\n"
         "Funds stay in escrow until the deal is confirmed.\n"
-        "Accounts · NFT · goods · TON"
+        "Accounts · NFT · goods · TON and USDT"
     ),
     "banned": (
         "🚫 <b>Access denied</b>\n\n"
@@ -567,15 +606,13 @@ EN = {
         "✨ Nick: <b>{nick}</b>\n"
         "🔗 Username: @{username}\n"
         "🤝 Deals: <b>{deals}</b>\n"
-        "💰 Balance: <b>{balance} {currency}</b>\n\n"
-        "💳 Card: {card}\n"
-        "📱 Phone: {phone}\n"
-        "🏦 Bank: {bank}\n"
-        "💎 TON: {ton}"
+        "💵 USDT: <b>{usdt}</b> (frozen {frozen_usdt})\n"
+        "💎 TON: <b>{ton_bal}</b> (frozen {frozen_ton})\n"
+        "💎 Withdrawal address: {ton}"
     ),
     "not_set": "not set",
     "btn_req": "Payout details",
-    "req_menu": "💳 <b>Payout details</b>\n\nVisible only to you and the admin.",
+    "req_menu": "💎 <b>Withdrawal address</b>\n\nTON network only. TON and USDT are sent here.",
     "req_card": "Card",
     "req_phone": "Phone and bank",
     "req_ton": "TON address",
@@ -611,12 +648,11 @@ EN = {
     "min_amount": "⚠️ Minimum {min} {currency}.",
     "about": (
         "ℹ️ <b>Phantom OTC</b>\n\n"
-        "Safe P2P deals: accounts, NFT gifts, goods, TON.\n\n"
-        "• Pay from balance — funds stay in escrow until confirm, if the seller has no payout details\n"
-        "• Accounts and goods with payout details — pay the seller, PDF receipt, no bot top-up\n"
-        "• NFT for rubles — pay the seller’s details, PDF receipt only\n"
-        "• TON → RUB via Wallet V4\n"
-        "• Category memo when a deal opens\n\n"
+        "Safe P2P deals in TON and USDT: accounts, NFT gifts, goods.\n\n"
+        "• Deposit TON or USDT via the TON network. Funds live in the bot\n"
+        "• When a deal starts the amount is frozen and cannot be withdrawn\n"
+        "• The buyer confirms receipt — the seller is paid minus the fee\n"
+        "• Either side can open a dispute; an admin decides\n\n"
         "💸 Fee: <b>{commission}%</b> from the seller\n"
         "💬 Support: @{support}\n"
         "{chat}"
@@ -664,19 +700,19 @@ EN = {
         "🛒 Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Seller: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Amount: <b>{amount}</b>\n"
+        "🔑 Credentials: {secret}\n"
         "📝 Terms: {desc}\n"
         "📌 Status: <b>{status}</b>"
     ),
     "deal_opened_nft": (
-        "🎁 <b>Deal #{id}</b> · NFT for rubles\n"
+        "🎁 <b>Deal #{id}</b> · NFT\n"
         "📂 {cat}\n"
         "🏷 {title}\n\n"
         "🛒 Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Seller: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Price: <b>{amount}</b>\n"
         "🎁 NFT: {nft}\n"
-        "💳 Seller details:\n{req}\n"
-        "📄 Receipt: {receipt}\n"
+        "🔑 Credentials: {secret}\n"
         "📝 Terms: {desc}\n"
         "📌 Status: <b>{status}</b>"
     ),
@@ -708,7 +744,7 @@ EN = {
         "📌 Status: <b>{status}</b>"
     ),
     "deal_status_pending": "⏳ waiting",
-    "deal_status_open": "🟢 open",
+    "deal_status_open": "🔒 amount frozen",
     "deal_status_wait_ton": "⏳ waiting for TON escrow",
     "deal_status_funded": "🔒 TON locked, waiting for rubles",
     "deal_status_rub_sent": "💸 rubles sent, waiting confirmation",
@@ -908,9 +944,9 @@ EN = {
     "deal_take": "Open this deal",
     "deal_manual_btn": "Memo",
     "deal_ask_cat": "📂 <b>Deal category</b>",
-    "deal_ask_group": "🛡️ <b>What are you selling or buying?</b>",
+    "deal_ask_group": "🛡️ <b>What are you selling?</b>",
     "deal_ask_title": "Short listing title for the channel. Example: Roblox 1200 Robux, email unlinked.",
-    "deal_list_ok": "Listing #{id} is in the channel. When a buyer opens it, both of you get the memo.",
+    "deal_list_ok": "Listing #{id} is in the channel. The buyer gets the memo when they open the deal.",
     "deal_list_ok_buy": "Listing #{id} is in the channel. When a seller opens it, both of you get the memo.",
     "deal_list_no_channel": "No deals channel in config.ini [bot] deals_channel. The listing is still in the bot feed.",
     "deal_list_ton": "TON → RUB deals are direct only, not posted to the channel.",
@@ -963,7 +999,7 @@ EN = {
     "channel_open": "🛡️ Open in bot",
     "channel_taken": "🔒 This deal was taken.",
     "channel_closed": "🔒 Listing removed.",
-    "deal_taken_seller": "Buyer @{username} opened listing #{id}. Read the memo and wait for payment.",
+    "deal_taken_seller": "Buyer @{username} opened listing #{id}. The amount is frozen in escrow.",
     "deal_taken_buyer": "Seller @{username} took listing #{id}. Read the memo.",
     "faq_title": "❓ <b>F.A.Q</b>\n\nAnswers to common questions.",
     "faq_empty": "❓ No articles yet. An admin can add them in the admin panel.",
@@ -1037,6 +1073,48 @@ EN = {
     "admin_fragment_off": "off",
     "admin_fragment_wait": "not ready (cookies / key / library)",
     "admin_nft_no_stars": "Deal #{id}: not enough Stars to transfer the NFT. Balance {stars}★, need {fee}★.",
+    "btn_admin": "Admin",
+    "deal_ask_currency": "💎 <b>Deal currency</b>\n\nTON or USDT. The buyer must top up this asset.",
+    "deal_cur_ton": "TON",
+    "deal_cur_usdt": "USDT",
+    "deal_ask_secret": "🔑 Account/item credentials (login, password, email). The buyer sees them after the amount is frozen.",
+    "deal_secret_hidden": "hidden until the deal starts",
+    "deal_seller_only": "⚠️ Only the seller can create a deal.",
+    "deposit_pick": "⬇️ <b>Which asset to deposit?</b>\n\nBoth go through the TON network to the escrow wallet.",
+    "deposit_asset_ton": "TON",
+    "deposit_asset_usdt": "USDT",
+    "deposit_usdt_net": "Send USDT (jetton) on TON to:\n<code>{address}</code>\nUse the memo above as the comment.",
+    "withdraw_pick": "⬆️ <b>Which asset to withdraw?</b>\n\nPayout is to a TON address only. Frozen deal funds cannot be withdrawn.",
+    "withdraw_frozen": "⚠️ Available {have} {currency}, another {frozen} is frozen in a deal. Frozen coins cannot be withdrawn.",
+    "admin_wallets": "Wallets",
+    "admin_sessions": "Sessions",
+    "admin_admins": "Admins",
+    "admin_adm_add": "Add admin",
+    "admin_cfg_ton_address": "TON escrow address",
+    "admin_cfg_ton_mnemonic": "TON mnemonic",
+    "admin_cfg_ton_api_key": "TON API key",
+    "admin_cfg_usdt_master": "USDT jetton master",
+    "admin_cfg_fragment_mnemonic": "Fragment mnemonic",
+    "admin_cfg_fragment_wallet": "Fragment wallet",
+    "admin_cfg_fragment_api_key": "Fragment API key",
+    "admin_cfg_bank_api_id": "Bank api_id",
+    "admin_cfg_bank_api_hash": "Bank api_hash",
+    "admin_cfg_bank_session": "Bank session",
+    "admin_cfg_bank_username": "Bank username",
+    "admin_cfg_fragment_cookies": "Fragment cookies",
+    "admin_cfg_ask": "New value for <b>{key}</b>. Send “-” to clear the field.",
+    "admin_cfg_saved": "✅ Saved: {key}",
+    "admin_cfg_reconnect": "Reconnected: {svc}",
+    "admin_cfg_wallets_text": "💎 <b>Wallets</b>\n\n{lines}\n\nTap a field to replace its value.",
+    "admin_cfg_sessions_text": "🔐 <b>Sessions</b>\n\n{lines}\n\nTap a field to replace its value.",
+    "admin_cfg_admins_text": "👑 <b>Admins</b>\n\n{lines}\n\nAdd an ID or @username. You cannot remove the last admin.",
+    "admin_adm_ask": "Send the Telegram ID or @username of the new admin.",
+    "admin_adm_added": "✅ Admin {id} added.",
+    "admin_adm_removed": "✅ Admin {id} removed.",
+    "admin_adm_last": "⚠️ You cannot remove the last admin.",
+    "admin_adm_self": "⚠️ You cannot remove yourself.",
+    "admin_adm_exists": "⚠️ This user is already an admin.",
+    "admin_cfg_value": "{title}\n<code>{value}</code>",
 }
 
 LOCALES = {"ru": RU, "en": EN}

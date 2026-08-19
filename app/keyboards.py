@@ -4,8 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.buttons import KEYS, PAGE_SIZE, STYLES, Theme
 from app.i18n import t
-from app.storage import DEAL_DISPUTE, DEAL_FUNDED, DEAL_LISTED, DEAL_OPEN, DEAL_PAID, DEAL_PENDING, DEAL_REVIEW, DEAL_RUB_SENT, DEAL_WAIT_TON, Storage
-from app.util import pays_requisites
+from app.storage import DEAL_DISPUTE, DEAL_LISTED, DEAL_OPEN, DEAL_PENDING, DEAL_REVIEW, Storage
 from app import ctx
 
 
@@ -55,10 +54,12 @@ class BtnCB(CallbackData, prefix="ub"):
 
 async def home_kb(db: Storage, user_id: int, lang: str, theme: Theme) -> InlineKeyboardMarkup:
     active = await db.active_deal(user_id)
-    return main_menu(lang, theme, active["id"] if active else None)
+    from app.config import get_settings
+    admin = get_settings().is_admin(user_id)
+    return main_menu(lang, theme, active["id"] if active else None, admin=admin)
 
 
-def main_menu(lang: str, theme: Theme, deal_id: int | None = None) -> InlineKeyboardMarkup:
+def main_menu(lang: str, theme: Theme, deal_id: int | None = None, admin: bool = False) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     theme.add(kb, "btn_deal", lang, callback_data=NavCB(a="deal").pack())
     theme.add(kb, "btn_faq", lang, callback_data=NavCB(a="faq").pack())
@@ -74,6 +75,9 @@ def main_menu(lang: str, theme: Theme, deal_id: int | None = None) -> InlineKeyb
     else:
         theme.add(kb, "btn_support", lang, callback_data=NavCB(a="support").pack())
     rows = [1, 2, 1]
+    if admin:
+        theme.add(kb, "btn_admin", lang, callback_data=NavCB(a="admin").pack())
+        rows.append(1)
     if deal_id:
         theme.add(kb, "active_deal_btn", lang, callback_data=DealCB(a="open", i=deal_id).pack(), fmt={"id": deal_id})
         rows.append(1)
@@ -111,10 +115,26 @@ def profile_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
 
 def requisites_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    theme.add(kb, "req_card", lang, callback_data=NavCB(a="req_card").pack())
-    theme.add(kb, "req_phone", lang, callback_data=NavCB(a="req_phone").pack())
     theme.add(kb, "req_ton", lang, callback_data=NavCB(a="req_ton").pack())
     theme.add(kb, "btn_back", lang, callback_data=NavCB(a="profile").pack())
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def currency_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    theme.add(kb, "deal_cur_usdt", lang, callback_data=DealCB(a="cur", x=0).pack())
+    theme.add(kb, "deal_cur_ton", lang, callback_data=DealCB(a="cur", x=1).pack())
+    theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def asset_pick_kb(lang: str, theme: Theme, action: str) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    theme.add(kb, "deposit_asset_usdt", lang, callback_data=WalletCB(a=action, m="USDT").pack())
+    theme.add(kb, "deposit_asset_ton", lang, callback_data=WalletCB(a=action, m="TON").pack())
+    theme.add(kb, "btn_cancel", lang, callback_data=NavCB(a="fsmx").pack())
     kb.adjust(1)
     return kb.as_markup()
 
@@ -146,7 +166,7 @@ def group_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
     from app.catalog import GROUPS, group_label
 
     kb = InlineKeyboardBuilder()
-    styles = {"acc": "primary", "crypto": "primary", "nft": "success", "goods": "primary", "other": "primary"}
+    styles = {"acc": "primary", "nft": "success", "goods": "primary", "other": "primary"}
     for key, _ in GROUPS:
         kb.button(
             text=group_label(key, lang),
@@ -165,7 +185,7 @@ def category_kb(lang: str, theme: Theme, group: str | None = None) -> InlineKeyb
     kb = InlineKeyboardBuilder()
     keys = group_cats(group) if group else CATS
     for key in keys:
-        style = "success" if key in {"nft", "ton"} else "primary"
+        style = "success" if key == "nft" else "primary"
         kb.button(text=label(key, lang), style=style, callback_data=CatCB(k=key, g=0).pack())
     theme.add(kb, "btn_back", lang, callback_data=NavCB(a="deal").pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
@@ -205,68 +225,24 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int, seller_row=None) -> Inl
     status = deal["status"]
     is_seller = user_id == deal["seller_id"]
     owner = int(deal["seller_id"] or 0) or int(deal["buyer_id"] or 0)
-    ton = False
-    nft = False
-    try:
-        ton = deal["kind"] == "ton_rub"
-    except (KeyError, IndexError, TypeError):
-        ton = False
-    try:
-        nft = (deal["category"] or "") == "nft"
-    except (KeyError, IndexError, TypeError):
-        nft = False
-    req_pay = pays_requisites(deal, seller_row)
     if status == DEAL_PENDING and is_seller:
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
     if status == DEAL_LISTED and user_id == owner:
         theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())
         theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
-    if status in {DEAL_OPEN, DEAL_PAID, DEAL_LISTED, DEAL_WAIT_TON, DEAL_FUNDED, DEAL_RUB_SENT}:
+    if status == DEAL_OPEN and not is_seller:
         theme.add(kb, "deal_manual_btn", lang, callback_data=DealCB(a="memo", i=deal["id"]).pack())
-    if status == DEAL_OPEN:
-        if ton:
-            if is_seller:
-                theme.add(kb, "deal_set_ton", lang, callback_data=DealCB(a="tonamt", i=deal["id"]).pack())
-                theme.add(kb, "deal_set_rub", lang, callback_data=DealCB(a="rubamt", i=deal["id"]).pack())
-                theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
-            else:
-                theme.add(kb, "deal_set_buy_ton", lang, callback_data=DealCB(a="buyaddr", i=deal["id"]).pack())
-        elif req_pay:
-            if is_seller:
-                if nft and not deal["nft_id"]:
-                    theme.add(kb, "deal_set_nft", lang, callback_data=DealCB(a="nft", i=deal["id"]).pack())
-                theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())
-                theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
-            else:
-                theme.add(kb, "deal_pdf", lang, callback_data=DealCB(a="pdf", i=deal["id"]).pack())
-        elif is_seller:
-            theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())
-            theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
-        else:
-            theme.add(kb, "deal_pay", lang, callback_data=DealCB(a="pay", i=deal["id"]).pack())
+        theme.add(kb, "deal_confirm", lang, callback_data=DealCB(a="ok", i=deal["id"]).pack())
+        theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
+    if status == DEAL_OPEN and is_seller:
+        theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
-    if status == DEAL_WAIT_TON:
-        theme.add(kb, "deal_check_ton", lang, callback_data=DealCB(a="chkton", i=deal["id"]).pack())
+    if status == DEAL_OPEN and not is_seller:
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
-        theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
-    if status == DEAL_FUNDED:
-        if not is_seller:
-            theme.add(kb, "deal_rub_paid", lang, callback_data=DealCB(a="rubpay", i=deal["id"]).pack())
-        theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
-    if status == DEAL_RUB_SENT:
-        if is_seller:
-            theme.add(kb, "deal_rub_ok", lang, callback_data=DealCB(a="rubok", i=deal["id"]).pack())
-        theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
-    if status == DEAL_PAID:
-        if not is_seller:
-            theme.add(kb, "deal_confirm", lang, callback_data=DealCB(a="ok", i=deal["id"]).pack())
-        theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
     if status == DEAL_DISPUTE:
         theme.add(kb, "deal_dispute_thread", lang, callback_data=DealCB(a="disth", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute_evidence", lang, callback_data=DealCB(a="disev", i=deal["id"]).pack())
-    if status == DEAL_REVIEW and nft and not deal["nft_sent"]:
-        theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
     if status == DEAL_REVIEW and not is_seller:
         theme.add(kb, "deal_review_skip", lang, callback_data=DealCB(a="skip", i=deal["id"]).pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
@@ -324,8 +300,6 @@ def deposit_kb(lang: str, theme: Theme, deposit_id: int) -> InlineKeyboardMarkup
 
 def withdraw_method_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    theme.add(kb, "req_card", lang, callback_data=WalletCB(a="wdm", m="card").pack())
-    theme.add(kb, "req_phone", lang, callback_data=WalletCB(a="wdm", m="phone").pack())
     theme.add(kb, "req_ton", lang, callback_data=WalletCB(a="wdm", m="ton").pack())
     theme.add(kb, "btn_cancel", lang, callback_data=NavCB(a="fsmx").pack())
     kb.adjust(1)
@@ -345,9 +319,31 @@ def admin_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
     theme.add(kb, "admin_screens", lang, callback_data=AdminCB(a="scr").pack())
     theme.add(kb, "admin_balance", lang, callback_data=AdminCB(a="bal").pack())
     theme.add(kb, "admin_mail", lang, callback_data=AdminCB(a="mail").pack())
+    theme.add(kb, "admin_wallets", lang, callback_data=AdminCB(a="wal").pack())
+    theme.add(kb, "admin_sessions", lang, callback_data=AdminCB(a="sess").pack())
+    theme.add(kb, "admin_admins", lang, callback_data=AdminCB(a="adms").pack())
     theme.add(kb, "admin_buttons", lang, callback_data=BtnCB(a="list", p=0).pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
     kb.adjust(2)
+    return kb.as_markup()
+
+
+def cfg_fields_kb(lang: str, theme: Theme, fields: list[str]) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    for key in fields:
+        kb.button(text=t(lang, f"admin_cfg_{key}"), style="primary", callback_data=AdminCB(a="cfgset", k=key).pack())
+    theme.add(kb, "btn_back", lang, callback_data=AdminCB(a="home").pack())
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def admins_kb(lang: str, theme: Theme, ids: list[int]) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    theme.add(kb, "admin_adm_add", lang, callback_data=AdminCB(a="admadd").pack())
+    for uid in ids:
+        kb.button(text=f"✕ {uid}", style="danger", callback_data=AdminCB(a="admrm", i=uid).pack())
+    theme.add(kb, "btn_back", lang, callback_data=AdminCB(a="home").pack())
+    kb.adjust(1)
     return kb.as_markup()
 
 

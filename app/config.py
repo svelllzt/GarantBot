@@ -38,6 +38,9 @@ FIELDS: dict[tuple[str, str], str] = {
     ("ton", "gas"): "ton_gas",
     ("ton", "min_deal"): "min_ton_deal",
     ("ton", "min_rub"): "min_rub_deal",
+    ("ton", "usdt_master"): "usdt_master",
+    ("ton", "min_deposit"): "min_deposit_ton",
+    ("ton", "min_withdraw"): "min_withdraw_ton",
     ("fragment", "mnemonic"): "fragment_mnemonic",
     ("fragment", "api_key"): "fragment_api_key",
     ("fragment", "cookies"): "fragment_cookies",
@@ -74,6 +77,9 @@ DEFAULTS: dict[str, Any] = {
     "ton_gas": 0.05,
     "min_ton_deal": 0.1,
     "min_rub_deal": 1.0,
+    "min_deposit_ton": 0.1,
+    "min_withdraw_ton": 0.1,
+    "usdt_master": "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs",
     "fragment_mnemonic": "",
     "fragment_api_key": "",
     "fragment_cookies": "",
@@ -108,6 +114,9 @@ ENV_TO_ATTR = {
     "TON_GAS": "ton_gas",
     "MIN_TON_DEAL": "min_ton_deal",
     "MIN_RUB_DEAL": "min_rub_deal",
+    "MIN_DEPOSIT_TON": "min_deposit_ton",
+    "MIN_WITHDRAW_TON": "min_withdraw_ton",
+    "USDT_MASTER": "usdt_master",
     "FRAGMENT_MNEMONIC": "fragment_mnemonic",
     "FRAGMENT_API_KEY": "fragment_api_key",
     "FRAGMENT_COOKIES": "fragment_cookies",
@@ -318,6 +327,9 @@ class Settings:
     ton_gas: float
     min_ton_deal: float
     min_rub_deal: float
+    min_deposit_ton: float
+    min_withdraw_ton: float
+    usdt_master: str
     fragment_mnemonic: str
     fragment_api_key: str
     fragment_cookies: str

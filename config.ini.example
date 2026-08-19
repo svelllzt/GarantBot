@@ -38,6 +38,9 @@ network = mainnet
 gas = 0.05
 min_deal = 0.1
 min_rub = 1
+min_deposit = 0.1
+min_withdraw = 0.1
+usdt_master = EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs
 
 [fragment]
 ; Отдельный кошелёк (не [ton] mnemonic) для автопокупки Stars за TON на банковский аккаунт.

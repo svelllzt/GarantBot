@@ -41,6 +41,77 @@ async def incoming_by_comment(settings: Settings, comment: str, address: str | N
     return None
 
 
+USDT_MASTER = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
+USDT_DECIMALS = 6
+
+
+def _payload_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("comment", "text", "decoded", "value"):
+            raw = value.get(key)
+            if raw:
+                return str(raw).strip()
+        return ""
+    return str(value).strip()
+
+
+async def incoming_usdt_by_comment(settings: Settings, comment: str, address: str | None = None) -> Optional[float]:
+    target = (address or settings.ton_address or "").strip()
+    master = (getattr(settings, "usdt_master", None) or USDT_MASTER).strip() or USDT_MASTER
+    if not target or not comment:
+        return None
+    host = "https://testnet.toncenter.com" if settings.ton_network.lower() == "testnet" else "https://toncenter.com"
+    url = f"{host}/api/v3/jetton/transfers"
+    params = {
+        "owner_address": target,
+        "jetton_master": master,
+        "direction": "in",
+        "limit": 50,
+    }
+    headers = {}
+    if settings.ton_api_key:
+        headers["X-API-Key"] = settings.ton_api_key
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, headers=headers, timeout=20) as resp:
+                payload = await resp.json()
+    except Exception:
+        log.exception("toncenter jetton request failed")
+        return None
+    rows = payload.get("jetton_transfers") or payload.get("transfers") or payload.get("result") or []
+    if isinstance(rows, dict):
+        rows = rows.get("jetton_transfers") or rows.get("transfers") or []
+    want = comment.strip()
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        msg = " ".join(
+            part
+            for part in (
+                _payload_text(row.get("comment")),
+                _payload_text(row.get("decoded_comment")),
+                _payload_text(row.get("decoded_forward_payload")),
+                _payload_text(row.get("forward_payload")),
+            )
+            if part
+        )
+        if want not in msg.split() and want != _payload_text(row.get("comment")) and want != _payload_text(row.get("decoded_comment")) and want != _payload_text(row.get("decoded_forward_payload")):
+            continue
+        raw_amt = row.get("amount") or row.get("jetton_amount") or 0
+        try:
+            units = int(str(raw_amt).split(".")[0])
+        except (TypeError, ValueError):
+            continue
+        if units <= 0:
+            continue
+        return units / (10 ** USDT_DECIMALS)
+    return None
+
+
 def ton_to_currency(ton_amount: float, settings: Settings, requested: float) -> Optional[float]:
     if settings.ton_rate > 0:
         credited = round(ton_amount * settings.ton_rate, 2)

@@ -57,6 +57,8 @@ DEAL_FIELDS = {
     "dispute_by",
     "receipt_id",
     "seller_id",
+    "currency",
+    "secret",
 }
 WALLET_PENDING = "pending"
 WALLET_DONE = "done"
@@ -65,6 +67,18 @@ WALLET_REJECTED = "rejected"
 
 def now() -> int:
     return int(time.time())
+
+
+def _asset_cols(asset: str) -> tuple[str, str]:
+    if (asset or "").upper() == "TON":
+        return "balance_ton", "frozen_ton"
+    return "balance", "frozen_usdt"
+
+
+def _asset_round(asset: str, amount: float) -> float:
+    if (asset or "").upper() == "TON":
+        return round(float(amount), 9)
+    return round(float(amount), 6)
 
 
 class Storage:
@@ -96,6 +110,9 @@ class Storage:
                 first_name TEXT,
                 lang TEXT,
                 balance REAL NOT NULL DEFAULT 0,
+                balance_ton REAL NOT NULL DEFAULT 0,
+                frozen_usdt REAL NOT NULL DEFAULT 0,
+                frozen_ton REAL NOT NULL DEFAULT 0,
                 deals_count INTEGER NOT NULL DEFAULT 0,
                 card TEXT,
                 phone TEXT,
@@ -120,6 +137,8 @@ class Storage:
                 kind TEXT NOT NULL DEFAULT 'goods',
                 category TEXT NOT NULL DEFAULT 'goods',
                 title TEXT,
+                currency TEXT NOT NULL DEFAULT 'USDT',
+                secret TEXT,
                 channel_msg_id INTEGER,
                 ton_amount REAL,
                 rub_amount REAL,
@@ -168,6 +187,7 @@ class Storage:
                 user_id INTEGER NOT NULL,
                 amount REAL NOT NULL,
                 comment TEXT NOT NULL UNIQUE,
+                asset TEXT NOT NULL DEFAULT 'USDT',
                 tx_hash TEXT,
                 status TEXT NOT NULL,
                 created_at INTEGER NOT NULL
@@ -178,6 +198,7 @@ class Storage:
                 user_id INTEGER NOT NULL,
                 amount REAL NOT NULL,
                 method TEXT NOT NULL,
+                asset TEXT NOT NULL DEFAULT 'USDT',
                 details TEXT NOT NULL,
                 status TEXT NOT NULL,
                 created_at INTEGER NOT NULL
@@ -242,6 +263,9 @@ class Storage:
                 "username": "TEXT",
                 "lang": "TEXT",
                 "balance": "REAL NOT NULL DEFAULT 0",
+                "balance_ton": "REAL NOT NULL DEFAULT 0",
+                "frozen_usdt": "REAL NOT NULL DEFAULT 0",
+                "frozen_ton": "REAL NOT NULL DEFAULT 0",
                 "deals_count": "INTEGER NOT NULL DEFAULT 0",
                 "card": "TEXT",
                 "phone": "TEXT",
@@ -272,6 +296,20 @@ class Storage:
                 "dispute_reason": "TEXT",
                 "dispute_by": "INTEGER",
                 "receipt_id": "TEXT",
+                "currency": "TEXT NOT NULL DEFAULT 'USDT'",
+                "secret": "TEXT",
+            },
+        )
+        await self._add_missing(
+            "deposits",
+            {
+                "asset": "TEXT NOT NULL DEFAULT 'USDT'",
+            },
+        )
+        await self._add_missing(
+            "withdrawals",
+            {
+                "asset": "TEXT NOT NULL DEFAULT 'USDT'",
             },
         )
         await self._add_missing(
@@ -372,25 +410,135 @@ class Storage:
         await self.execute(f"UPDATE users SET {field} = ? WHERE user_id = ?", (value, user_id))
 
     async def change_balance(self, user_id: int, delta: float) -> float:
+        return await self.credit_asset(user_id, "USDT", delta)
+
+    async def credit_asset(self, user_id: int, asset: str, delta: float) -> float:
+        bal, _fr = _asset_cols(asset)
+        qty = _asset_round(asset, delta)
         cur = await self.db.execute(
-            """
+            f"""
             UPDATE users
-            SET balance = ROUND(balance + ?, 2)
-            WHERE user_id = ? AND ROUND(balance + ?, 2) >= 0
+            SET {bal} = ROUND({bal} + ?, 9)
+            WHERE user_id = ? AND ROUND({bal} + ?, 9) >= 0
             """,
-            (delta, user_id, delta),
+            (qty, user_id, qty),
         )
         await self.db.commit()
         if cur.rowcount != 1:
             raise ValueError("insufficient")
         row = await self.get_user(user_id)
-        return float(row["balance"])
+        return float(row[bal] or 0)
 
     async def set_balance(self, user_id: int, amount: float) -> None:
+        await self.set_asset(user_id, "USDT", amount)
+
+    async def set_asset(self, user_id: int, asset: str, amount: float) -> None:
+        bal, _fr = _asset_cols(asset)
         await self.execute(
-            "UPDATE users SET balance = ? WHERE user_id = ?",
-            (round(amount, 2), user_id),
+            f"UPDATE users SET {bal} = ? WHERE user_id = ?",
+            (_asset_round(asset, amount), user_id),
         )
+
+    def available(self, user, asset: str) -> float:
+        if user is None:
+            return 0.0
+        bal, fr = _asset_cols(asset)
+        try:
+            total = float(user[bal] or 0)
+            frozen = float(user[fr] or 0)
+        except (KeyError, IndexError, TypeError):
+            total = float(user["balance"] or 0) if asset != "TON" else 0.0
+            frozen = 0.0
+        return max(round(total - frozen, 9), 0.0)
+
+    def frozen_of(self, user, asset: str) -> float:
+        if user is None:
+            return 0.0
+        _bal, fr = _asset_cols(asset)
+        try:
+            return max(float(user[fr] or 0), 0.0)
+        except (KeyError, IndexError, TypeError):
+            return 0.0
+
+    def total_of(self, user, asset: str) -> float:
+        if user is None:
+            return 0.0
+        bal, _fr = _asset_cols(asset)
+        try:
+            return max(float(user[bal] or 0), 0.0)
+        except (KeyError, IndexError, TypeError):
+            return max(float(user["balance"] or 0), 0.0) if asset != "TON" else 0.0
+
+    async def freeze_asset(self, user_id: int, asset: str, amount: float) -> None:
+        bal, fr = _asset_cols(asset)
+        qty = _asset_round(asset, amount)
+        if qty <= 0:
+            raise ValueError("amount")
+        cur = await self.db.execute(
+            f"""
+            UPDATE users
+            SET {fr} = ROUND({fr} + ?, 9)
+            WHERE user_id = ?
+              AND ROUND({bal} - {fr}, 9) >= ?
+            """,
+            (qty, user_id, qty),
+        )
+        await self.db.commit()
+        if cur.rowcount != 1:
+            raise ValueError("insufficient")
+
+    async def unfreeze_asset(self, user_id: int, asset: str, amount: float) -> None:
+        _bal, fr = _asset_cols(asset)
+        qty = _asset_round(asset, amount)
+        if qty <= 0:
+            return
+        cur = await self.db.execute(
+            f"""
+            UPDATE users
+            SET {fr} = MAX(0, ROUND({fr} - ?, 9))
+            WHERE user_id = ? AND ROUND({fr}, 9) >= ?
+            """,
+            (qty, user_id, qty),
+        )
+        await self.db.commit()
+        if cur.rowcount != 1:
+            raise ValueError("insufficient")
+
+    async def capture_asset(self, user_id: int, asset: str, amount: float) -> None:
+        bal, fr = _asset_cols(asset)
+        qty = _asset_round(asset, amount)
+        if qty <= 0:
+            return
+        cur = await self.db.execute(
+            f"""
+            UPDATE users
+            SET {bal} = ROUND({bal} - ?, 9),
+                {fr} = MAX(0, ROUND({fr} - ?, 9))
+            WHERE user_id = ?
+              AND ROUND({fr}, 9) >= ?
+              AND ROUND({bal}, 9) >= ?
+            """,
+            (qty, qty, user_id, qty, qty),
+        )
+        await self.db.commit()
+        if cur.rowcount != 1:
+            raise ValueError("insufficient")
+
+    async def spend_available(self, user_id: int, asset: str, amount: float) -> None:
+        bal, fr = _asset_cols(asset)
+        qty = _asset_round(asset, amount)
+        cur = await self.db.execute(
+            f"""
+            UPDATE users
+            SET {bal} = ROUND({bal} - ?, 9)
+            WHERE user_id = ?
+              AND ROUND({bal} - {fr}, 9) >= ?
+            """,
+            (qty, user_id, qty),
+        )
+        await self.db.commit()
+        if cur.rowcount != 1:
+            raise ValueError("insufficient")
 
     async def bump_deals(self, *user_ids: int) -> None:
         for uid in user_ids:
@@ -418,9 +566,9 @@ class Storage:
         escrow = await self.fetchone(
             f"""
             SELECT COALESCE(SUM(amount), 0) AS s FROM deals
-            WHERE status IN (?, ?, ?, ?, ?)
+            WHERE status IN (?, ?, ?)
             """,
-            (DEAL_PAID, DEAL_FUNDED, DEAL_RUB_SENT, DEAL_DISPUTE, DEAL_REVIEW),
+            (DEAL_OPEN, DEAL_DISPUTE, DEAL_REVIEW),
         )
         by_status = await self.fetchall(
             "SELECT status, COUNT(*) AS c FROM deals GROUP BY status"
@@ -458,7 +606,7 @@ class Storage:
               AND status IN (?, ?, ?)
             ORDER BY id
             """,
-            (DEAL_PAID, DEAL_REVIEW, DEAL_CLOSED),
+            (DEAL_OPEN, DEAL_DISPUTE, DEAL_REVIEW),
         )
 
     async def create_deal(
@@ -473,10 +621,13 @@ class Storage:
         amount: float | None = None,
         description: str | None = None,
         nft_id: int | None = None,
+        currency: str = "USDT",
+        secret: str | None = None,
         exclusive: bool = False,
     ) -> Optional[int]:
         if kind not in {KIND_GOODS, KIND_TON_RUB}:
             kind = KIND_GOODS
+        asset = "TON" if (currency or "").upper() == "TON" else "USDT"
         stamp = now()
         values = (
             seller_id,
@@ -488,6 +639,8 @@ class Storage:
             amount,
             description,
             nft_id or None,
+            asset,
+            (secret or "")[:2000] or None,
             stamp,
             stamp,
         )
@@ -496,9 +649,9 @@ class Storage:
             cur = await self.execute(
                 f"""
                 INSERT INTO deals (
-                    seller_id, buyer_id, status, kind, category, title, amount, description, nft_id, created_at, updated_at
+                    seller_id, buyer_id, status, kind, category, title, amount, description, nft_id, currency, secret, created_at, updated_at
                 )
-                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 WHERE NOT EXISTS (
                     SELECT 1 FROM deals
                     WHERE status IN ({placeholders})
@@ -516,9 +669,9 @@ class Storage:
         cur = await self.execute(
             """
             INSERT INTO deals (
-                seller_id, buyer_id, status, kind, category, title, amount, description, nft_id, created_at, updated_at
+                seller_id, buyer_id, status, kind, category, title, amount, description, nft_id, currency, secret, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             values,
         )
@@ -733,13 +886,13 @@ class Storage:
         )
         return cur.rowcount == 1
 
-    async def create_deposit(self, user_id: int, amount: float, comment: str) -> int:
+    async def create_deposit(self, user_id: int, amount: float, comment: str, asset: str = "USDT") -> int:
         cur = await self.execute(
             """
-            INSERT INTO deposits (user_id, amount, comment, status, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO deposits (user_id, amount, comment, asset, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (user_id, round(amount, 2), comment, WALLET_PENDING, now()),
+            (user_id, _asset_round(asset, amount), comment, (asset or "USDT").upper(), WALLET_PENDING, now()),
         )
         return cur.lastrowid
 
@@ -768,14 +921,14 @@ class Storage:
         )
         return cur.rowcount == 1
 
-    async def create_withdraw(self, user_id: int, amount: float, method: str, details: str) -> int:
+    async def create_withdraw(self, user_id: int, amount: float, method: str, details: str, asset: str = "USDT") -> int:
         try:
             cur = await self.execute(
                 """
-                INSERT INTO withdrawals (user_id, amount, method, details, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO withdrawals (user_id, amount, method, asset, details, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, round(amount, 2), method, details, WALLET_PENDING, now()),
+                (user_id, _asset_round(asset, amount), method, (asset or "USDT").upper(), details, WALLET_PENDING, now()),
             )
         except aiosqlite.IntegrityError:
             raise ValueError("pending")

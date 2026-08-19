@@ -11,12 +11,15 @@ from app.i18n import t
 from app.keyboards import (
     AdminCB,
     BtnCB,
+    NavCB,
     admin_kb,
+    admins_kb,
     bans_kb,
     button_edit_kb,
     button_style_kb,
     buttons_list_kb,
     cancel_kb,
+    cfg_fields_kb,
     dispute_admin_kb,
     faq_admin_item_kb,
     faq_admin_kb,
@@ -30,13 +33,96 @@ from app.services import deals as svc
 from app.services.deals import DealError
 from app.states import AdminFlow
 from app.storage import WALLET_DONE, WALLET_REJECTED, Storage
-from app.util import ban_notice, extract_emoji_id, is_cancel, is_ton_deal, money, money_ton, parse_amount, paint
+from app.util import ban_notice, deal_asset, extract_emoji_id, is_cancel, money, money_asset, parse_amount, paint
 
 router = Router()
 
 
+WALLET_FIELDS = (
+    "ton_address",
+    "ton_mnemonic",
+    "ton_api_key",
+    "usdt_master",
+    "fragment_mnemonic",
+    "fragment_wallet",
+    "fragment_api_key",
+)
+SESSION_FIELDS = (
+    "bank_api_id",
+    "bank_api_hash",
+    "bank_session",
+    "bank_username",
+    "fragment_cookies",
+)
+SECRET_FIELDS = {
+    "ton_mnemonic",
+    "ton_api_key",
+    "fragment_mnemonic",
+    "fragment_api_key",
+    "bank_api_hash",
+    "bank_session",
+    "fragment_cookies",
+}
+TON_RELOAD = {"ton_address", "ton_mnemonic", "ton_api_key"}
+BANK_RELOAD = {
+    "fragment_mnemonic",
+    "fragment_wallet",
+    "fragment_api_key",
+    "fragment_cookies",
+    "bank_api_id",
+    "bank_api_hash",
+    "bank_session",
+    "bank_username",
+}
+CFG_FIELDS = set(WALLET_FIELDS) | set(SESSION_FIELDS)
+
+
 def _admin(settings: Settings, user_id: int) -> bool:
     return settings.is_admin(user_id)
+
+
+def _mask(value: str, keep: int = 6) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return "—"
+    if len(raw) <= keep * 2:
+        return raw[:2] + "…" if len(raw) > 2 else "…"
+    return f"{raw[:keep]}…{raw[-keep:]}"
+
+
+def _cfg_lines(settings: Settings, lang: str, fields: tuple[str, ...]) -> str:
+    lines = []
+    for key in fields:
+        raw = getattr(settings, key, "")
+        text = "" if raw is None else str(raw).strip()
+        shown = _mask(text) if key in SECRET_FIELDS else (text or "—")
+        lines.append(t(lang, "admin_cfg_value", title=t(lang, f"admin_cfg_{key}"), value=shown))
+    return "\n\n".join(lines)
+
+
+def _wallets_text(settings: Settings, lang: str) -> str:
+    return t(lang, "admin_cfg_wallets_text", lines=_cfg_lines(settings, lang, WALLET_FIELDS))
+
+
+def _sessions_text(settings: Settings, lang: str) -> str:
+    return t(lang, "admin_cfg_sessions_text", lines=_cfg_lines(settings, lang, SESSION_FIELDS))
+
+
+def _admins_text(settings: Settings, lang: str) -> str:
+    ids = sorted(settings.admins)
+    lines = "\n".join(f"<code>{uid}</code>" for uid in ids) or "—"
+    return t(lang, "admin_cfg_admins_text", lines=lines)
+
+
+def _save_admins(settings: Settings, ids: list[int]) -> None:
+    unique = []
+    seen = set()
+    for uid in ids:
+        if uid in seen or uid <= 0:
+            continue
+        seen.add(uid)
+        unique.append(uid)
+    settings.patch("admin_ids", ",".join(str(x) for x in unique))
 
 
 @router.message(Command("admin"))
@@ -45,6 +131,14 @@ async def admin_entry(message: Message, lang: str, settings: Settings, theme: Th
         await message.answer(t(lang, "admin_only"))
         return
     await message.answer(t(lang, "admin_menu"), reply_markup=admin_kb(lang, theme))
+
+
+@router.callback_query(NavCB.filter(F.a == "admin"))
+async def admin_nav(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        await call.answer(t(lang, "admin_only"), show_alert=True)
+        return
+    await paint(call, t(lang, "admin_menu"), admin_kb(lang, theme), settings=settings)
 
 
 @router.callback_query(AdminCB.filter(F.a == "stats"))
@@ -270,6 +364,7 @@ async def disputes(call: CallbackQuery, db: Storage, lang: str, settings: Settin
         except (KeyError, IndexError, TypeError):
             reason = ""
         extra = f"\n{reason}" if reason else ""
+        asset = deal_asset(deal)
         await call.message.answer(
             t(
                 lang,
@@ -279,8 +374,8 @@ async def disputes(call: CallbackQuery, db: Storage, lang: str, settings: Settin
                 buyer_id=deal["buyer_id"],
                 seller=seller["username"] if seller else "-",
                 seller_id=deal["seller_id"],
-                amount=money(deal["amount"]) if not is_ton_deal(deal) else f"{money_ton(deal['ton_amount'])} TON / {money(deal['rub_amount'])} ₽",
-                currency="" if is_ton_deal(deal) else settings.currency,
+                amount=money_asset(deal["amount"], asset),
+                currency=asset,
                 nft="—" if not deal["nft_id"] else str(deal["nft_id"]),
             )
             + extra,
@@ -352,13 +447,20 @@ async def deposits(call: CallbackQuery, db: Storage, lang: str, settings: Settin
         await call.answer(t(lang, "admin_empty_list"), show_alert=True)
         return
     for row in rows:
+        asset = "USDT"
+        try:
+            asset = (row["asset"] or "USDT").upper()
+        except (KeyError, IndexError, TypeError):
+            asset = "USDT"
+        if asset != "TON":
+            asset = "USDT"
         await call.message.answer(
             t(
                 lang,
                 "admin_dep_line",
                 id=row["id"],
-                amount=f"{row['amount']:.2f}",
-                currency=settings.currency,
+                amount=money_asset(row["amount"], asset),
+                currency=asset,
                 comment=row["comment"],
                 user=row["user_id"],
             ),
@@ -376,13 +478,20 @@ async def withdraws(call: CallbackQuery, db: Storage, lang: str, settings: Setti
         await call.answer(t(lang, "admin_empty_list"), show_alert=True)
         return
     for row in rows:
+        asset = "USDT"
+        try:
+            asset = (row["asset"] or "USDT").upper()
+        except (KeyError, IndexError, TypeError):
+            asset = "USDT"
+        if asset != "TON":
+            asset = "USDT"
         await call.message.answer(
             t(
                 lang,
                 "admin_wd_line",
                 id=row["id"],
-                amount=f"{row['amount']:.2f}",
-                currency=settings.currency,
+                amount=money_asset(row["amount"], asset),
+                currency=asset,
                 method=row["method"],
                 details=row["details"],
                 user=row["user_id"],
@@ -403,13 +512,20 @@ async def dep_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang:
     if not await db.claim_deposit(deposit["id"], WALLET_DONE):
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    await db.change_balance(deposit["user_id"], float(deposit["amount"]))
+    asset = "USDT"
+    try:
+        asset = (deposit["asset"] or "USDT").upper()
+    except (KeyError, IndexError, TypeError):
+        asset = "USDT"
+    if asset != "TON":
+        asset = "USDT"
+    await db.credit_asset(deposit["user_id"], asset, float(deposit["amount"]))
     await paint(call, t(lang, "admin_dep_ok"), settings=settings)
     try:
         user = await db.get_user(deposit["user_id"])
         await call.bot.send_message(
             deposit["user_id"],
-            t(user["lang"] or "ru", "deposit_ok", amount=f"{deposit['amount']:.2f}", currency=settings.currency),
+            t(user["lang"] or "ru", "deposit_ok", amount=money_asset(deposit["amount"], asset), currency=asset),
         )
     except Exception:
         pass
@@ -454,7 +570,14 @@ async def wd_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: 
     if not await db.claim_withdraw(item["id"], WALLET_REJECTED):
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    await db.change_balance(item["user_id"], float(item["amount"]))
+    asset = "USDT"
+    try:
+        asset = (item["asset"] or "USDT").upper()
+    except (KeyError, IndexError, TypeError):
+        asset = "USDT"
+    if asset != "TON":
+        asset = "USDT"
+    await db.credit_asset(item["user_id"], asset, float(item["amount"]))
     await paint(call, t(lang, "admin_wd_no"), settings=settings)
 
 
@@ -463,6 +586,164 @@ async def admin_home(call: CallbackQuery, lang: str, settings: Settings, theme: 
     if not _admin(settings, call.from_user.id):
         return
     await paint(call, t(lang, "admin_menu"), admin_kb(lang, theme), settings=settings)
+
+
+@router.callback_query(AdminCB.filter(F.a == "wal"))
+async def admin_wallets(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        await call.answer(t(lang, "admin_only"), show_alert=True)
+        return
+    await paint(call, _wallets_text(settings, lang), cfg_fields_kb(lang, theme, list(WALLET_FIELDS)), settings=settings)
+
+
+@router.callback_query(AdminCB.filter(F.a == "sess"))
+async def admin_sessions(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        await call.answer(t(lang, "admin_only"), show_alert=True)
+        return
+    await paint(call, _sessions_text(settings, lang), cfg_fields_kb(lang, theme, list(SESSION_FIELDS)), settings=settings)
+
+
+@router.callback_query(AdminCB.filter(F.a == "adms"))
+async def admin_admins(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        await call.answer(t(lang, "admin_only"), show_alert=True)
+        return
+    await paint(call, _admins_text(settings, lang), admins_kb(lang, theme, sorted(settings.admins)), settings=settings)
+
+
+@router.callback_query(AdminCB.filter(F.a == "cfgset"))
+async def admin_cfg_ask(
+    call: CallbackQuery,
+    callback_data: AdminCB,
+    state: FSMContext,
+    lang: str,
+    settings: Settings,
+    theme: Theme,
+):
+    if not _admin(settings, call.from_user.id):
+        await call.answer(t(lang, "admin_only"), show_alert=True)
+        return
+    field = callback_data.k
+    if field not in CFG_FIELDS:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    await state.set_state(AdminFlow.cfg_value)
+    await state.update_data(cfg_field=field)
+    await paint(
+        call,
+        t(lang, "admin_cfg_ask", key=t(lang, f"admin_cfg_{field}")),
+        cancel_kb(lang, theme),
+        settings=settings,
+    )
+
+
+@router.message(AdminFlow.cfg_value, F.text)
+async def admin_cfg_save(
+    message: Message,
+    state: FSMContext,
+    lang: str,
+    settings: Settings,
+    theme: Theme,
+    bank: BankAccount,
+    ton,
+):
+    if not _admin(settings, message.from_user.id):
+        return
+    if is_cancel(message.text or ""):
+        return
+    data = await state.get_data()
+    field = str(data.get("cfg_field") or "")
+    if field not in CFG_FIELDS:
+        await state.clear()
+        return
+    value = (message.text or "").strip()
+    if value.lower() in {"-", "—", "none", "null", "empty"}:
+        value = ""
+    try:
+        settings.patch(field, value)
+    except Exception:
+        await message.answer(t(lang, "req_bad"))
+        return
+    await state.clear()
+    note = t(lang, "admin_cfg_saved", key=t(lang, f"admin_cfg_{field}"))
+    try:
+        if field in TON_RELOAD:
+            await ton.close()
+            await ton.connect()
+            note += "\n" + t(lang, "admin_cfg_reconnect", svc="TON")
+        elif field in BANK_RELOAD:
+            await bank.restart()
+            note += "\n" + t(lang, "admin_cfg_reconnect", svc="bank")
+    except Exception:
+        pass
+    kind = WALLET_FIELDS if field in WALLET_FIELDS else SESSION_FIELDS
+    text = _wallets_text(settings, lang) if field in WALLET_FIELDS else _sessions_text(settings, lang)
+    await message.answer(note + "\n\n" + text, reply_markup=cfg_fields_kb(lang, theme, list(kind)))
+
+
+@router.callback_query(AdminCB.filter(F.a == "admadd"))
+async def admin_add_ask(call: CallbackQuery, state: FSMContext, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        await call.answer(t(lang, "admin_only"), show_alert=True)
+        return
+    await state.set_state(AdminFlow.adm_add)
+    await paint(call, t(lang, "admin_adm_ask"), cancel_kb(lang, theme), settings=settings)
+
+
+@router.message(AdminFlow.adm_add, F.text)
+async def admin_add_save(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, message.from_user.id):
+        return
+    if is_cancel(message.text or ""):
+        return
+    raw = (message.text or "").strip().lstrip("@")
+    uid = 0
+    if raw.isdigit():
+        uid = int(raw)
+    else:
+        row = await db.get_user_by_username(raw)
+        if row:
+            uid = int(row["user_id"])
+        else:
+            try:
+                chat = await message.bot.get_chat("@" + raw)
+                uid = int(getattr(chat, "id", 0) or 0)
+            except Exception:
+                uid = 0
+    if uid <= 0:
+        await message.answer(t(lang, "admin_user_missing"), reply_markup=admins_kb(lang, theme, sorted(settings.admins)))
+        await state.clear()
+        return
+    ids = list(settings.admins)
+    if uid in ids:
+        await state.clear()
+        await message.answer(t(lang, "admin_adm_exists"), reply_markup=admins_kb(lang, theme, sorted(ids)))
+        return
+    ids.append(uid)
+    _save_admins(settings, ids)
+    await state.clear()
+    await message.answer(t(lang, "admin_adm_added", id=uid) + "\n\n" + _admins_text(settings, lang), reply_markup=admins_kb(lang, theme, sorted(settings.admins)))
+
+
+@router.callback_query(AdminCB.filter(F.a == "admrm"))
+async def admin_remove(call: CallbackQuery, callback_data: AdminCB, lang: str, settings: Settings, theme: Theme):
+    if not _admin(settings, call.from_user.id):
+        await call.answer(t(lang, "admin_only"), show_alert=True)
+        return
+    uid = int(callback_data.i)
+    if uid == call.from_user.id:
+        await call.answer(t(lang, "admin_adm_self"), show_alert=True)
+        return
+    ids = [x for x in settings.admins if x != uid]
+    if not ids:
+        await call.answer(t(lang, "admin_adm_last"), show_alert=True)
+        return
+    if uid not in settings.admins:
+        await call.answer()
+        return
+    _save_admins(settings, ids)
+    await paint(call, t(lang, "admin_adm_removed", id=uid) + "\n\n" + _admins_text(settings, lang), admins_kb(lang, theme, sorted(settings.admins)), settings=settings)
 
 
 def _btn_card(lang: str, theme: Theme, key: str) -> str:

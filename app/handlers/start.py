@@ -184,7 +184,7 @@ async def profile(call: CallbackQuery, state: FSMContext, db: Storage, lang: str
         return
     await paint(
         call,
-        profile_text(user, lang, settings.currency),
+        profile_text(user, lang, settings.currency, db),
         profile_kb(lang, theme),
         screen="profile",
         settings=settings,

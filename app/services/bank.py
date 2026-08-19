@@ -10,7 +10,7 @@ from app.pyro import Client, RawUpdateHandler, functions, types
 
 from app.config import Settings
 from app.i18n import t
-from app.storage import DEAL_CLOSED, DEAL_PAID, DEAL_REVIEW, NFT_TRANSFERRED, Storage
+from app.storage import DEAL_CLOSED, DEAL_DISPUTE, DEAL_OPEN, DEAL_REVIEW, NFT_TRANSFERRED, Storage
 from app.services.fragment import StarsBuyer
 from app.util import nft_title
 
@@ -225,6 +225,11 @@ class BankAccount:
         if self.client is not None:
             await self.client.stop()
             self.client = None
+        self.me = None
+
+    async def restart(self) -> None:
+        await self.stop()
+        await self.start()
 
     async def stars(self, force: bool = False) -> Optional[int]:
         if (
@@ -414,13 +419,13 @@ class BankAccount:
             fresh = await self.db.get_deal(deal["id"])
             if fresh is None or fresh["nft_sent"] or not fresh["nft_id"] or not fresh["buyer_id"]:
                 continue
-            if fresh["status"] not in {DEAL_PAID, DEAL_REVIEW, DEAL_CLOSED}:
+            if fresh["status"] not in {DEAL_OPEN, DEAL_DISPUTE, DEAL_REVIEW}:
                 continue
             nft = await self.db.get_nft(fresh["nft_id"])
             result = await self.transfer(nft, fresh["buyer_id"])
             if result == "ok":
                 await self.db.touch_deal(fresh["id"], nft_sent=1)
-                if fresh["status"] in {DEAL_CLOSED, DEAL_REVIEW}:
+                if fresh["status"] in {DEAL_REVIEW}:
                     await self.db.set_nft_status(
                         fresh["nft_id"],
                         NFT_TRANSFERRED,

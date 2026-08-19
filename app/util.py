@@ -6,7 +6,7 @@ from aiogram.types import CallbackQuery, Message
 from app.i18n import t
 from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_LISTED, DEAL_PENDING, KIND_TON_RUB
 
-_AMOUNT = re.compile(r"^\d+([.,]\d{1,2})?$")
+_AMOUNT = re.compile(r"^\d+([.,]\d{1,6})?$")
 _TON_AMT = re.compile(r"^\d+([.,]\d{1,9})?$")
 _CARD = re.compile(r"^\d{13,19}$")
 _PHONE = re.compile(r"^\+\d{10,15}$")
@@ -23,7 +23,7 @@ def parse_amount(text: str) -> float | None:
     raw = (text or "").strip().replace(" ", "").replace(",", ".")
     if not _AMOUNT.match(raw):
         return None
-    value = round(float(raw), 2)
+    value = round(float(raw), 6)
     if value <= 0 or value > 1_000_000:
         return None
     return value
@@ -78,8 +78,11 @@ def deal_status_key(status: str) -> str:
     return f"deal_status_{status}"
 
 
-def seller_payout(amount: float, commission: float) -> float:
-    return round(float(amount) * (100 - commission) / 100, 2)
+def seller_payout(amount: float, commission: float, asset: str = "USDT") -> float:
+    raw = float(amount) * (100 - commission) / 100
+    if (asset or "").upper() == "TON":
+        return round(raw, 9)
+    return round(raw, 6)
 
 
 def money_ton(value) -> str:
@@ -89,13 +92,25 @@ def money_ton(value) -> str:
     return text or "0"
 
 
-def is_ton_deal(deal) -> bool:
+def money_asset(value, asset: str) -> str:
+    if value is None:
+        return "—"
+    if (asset or "").upper() == "TON":
+        return money_ton(value)
+    text = f"{float(value):.6f}".rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def deal_asset(deal) -> str:
     try:
-        if deal["kind"] == KIND_TON_RUB:
-            return True
-        return deal["category"] == "ton"
+        cur = (deal["currency"] or "USDT").upper()
     except (KeyError, IndexError, TypeError):
-        return False
+        cur = "USDT"
+    return "TON" if cur == "TON" else "USDT"
+
+
+def is_ton_deal(deal) -> bool:
+    return deal_asset(deal) == "TON"
 
 
 def is_nft_deal(deal) -> bool:
@@ -106,11 +121,7 @@ def is_nft_deal(deal) -> bool:
 
 
 def pays_requisites(deal, seller=None) -> bool:
-    if is_nft_deal(deal):
-        return True
-    if is_ton_deal(deal):
-        return False
-    return has_rub_req(seller)
+    return False
 
 
 def listing_owner(deal) -> int:
@@ -128,9 +139,7 @@ def listing_is_buy(deal) -> bool:
 
 
 def deal_currency(deal, fallback: str, seller=None) -> str:
-    if pays_requisites(deal, seller):
-        return "₽"
-    return fallback
+    return deal_asset(deal) or fallback
 
 
 def is_pdf_document(message) -> bool:
@@ -167,7 +176,24 @@ def is_cancel(text: str) -> bool:
     return value in {"/cancel", "отмена", "cancel", "❌ отмена", "❌ cancel"}
 
 
-def profile_text(user, lang: str, currency: str) -> str:
+def profile_text(user, lang: str, currency: str, db=None) -> str:
+    usdt = 0.0
+    ton_bal = 0.0
+    frozen_usdt = 0.0
+    frozen_ton = 0.0
+    if db is not None:
+        usdt = db.available(user, "USDT")
+        ton_bal = db.available(user, "TON")
+        frozen_usdt = db.frozen_of(user, "USDT")
+        frozen_ton = db.frozen_of(user, "TON")
+    else:
+        usdt = max(float(user["balance"] or 0) - float(user["frozen_usdt"] or 0 if "frozen_usdt" in user.keys() else 0), 0)
+        try:
+            ton_bal = max(float(user["balance_ton"] or 0) - float(user["frozen_ton"] or 0), 0)
+            frozen_usdt = float(user["frozen_usdt"] or 0)
+            frozen_ton = float(user["frozen_ton"] or 0)
+        except (KeyError, IndexError, TypeError):
+            ton_bal = 0.0
     return t(
         lang,
         "profile",
@@ -175,11 +201,11 @@ def profile_text(user, lang: str, currency: str) -> str:
         nick=h(user["nick"] or user["first_name"] or "-"),
         username=username_of(user),
         deals=user["deals_count"],
-        balance=money(user["balance"]),
+        usdt=money_asset(usdt, "USDT"),
+        frozen_usdt=money_asset(frozen_usdt, "USDT"),
+        ton_bal=money_asset(ton_bal, "TON"),
+        frozen_ton=money_asset(frozen_ton, "TON"),
         currency=currency,
-        card=dash(user["card"], lang),
-        phone=dash(user["phone"], lang),
-        bank=dash(user["bank_name"], lang),
         ton=dash(user["ton_address"], lang),
     )
 
@@ -188,68 +214,38 @@ async def render_deal(db, deal, lang: str, currency: str, escrow: str = "") -> s
     from app.catalog import label as cat_label
 
     buyer = await db.get_user(deal["buyer_id"]) if deal["buyer_id"] else None
-    seller = await db.get_user(deal["seller_id"])
+    seller = await db.get_user(deal["seller_id"]) if deal["seller_id"] else None
     cat = cat_label(deal["category"] if "category" in deal.keys() else None, lang)
     title = deal["title"] if "title" in deal.keys() else ""
-    if is_ton_deal(deal):
-        req = "—"
-        if deal["status"] in {"funded", "rub_sent", "dispute", "closed"}:
-            req = seller_req_text(seller, lang)
-        return t(
-            lang,
-            "deal_opened_ton",
-            id=deal["id"],
-            buyer=username_of(buyer) if buyer else "-",
-            buyer_id=deal["buyer_id"],
-            seller=username_of(seller) if seller else "-",
-            seller_id=deal["seller_id"],
-            ton=money_ton(deal["ton_amount"]),
-            rub=money(deal["rub_amount"]),
-            buyer_ton=dash(deal["buyer_ton"], lang),
-            escrow=escrow or "—",
-            comment=deal["ton_comment"] or "—",
-            received=money_ton(deal["ton_received"]) if deal["ton_received"] else "—",
-            req=req,
-            desc=h(deal["description"]) if deal["description"] else "—",
-            status=t(lang, deal_status_key(deal["status"])),
-            payout=deal["payout_hash"] or "—",
-        )
+    asset = deal_asset(deal)
+    amount = f"{money_asset(deal['amount'], asset)} {asset}" if deal["amount"] is not None else "—"
     nft = await db.get_nft(deal["nft_id"]) if deal["nft_id"] else None
-    pay = deal_currency(deal, currency, seller)
-    amount = f"{money(deal['amount'])} {pay}" if deal["amount"] is not None else "—"
-    if is_nft_deal(deal) or pays_requisites(deal, seller):
-        show_req = deal["status"] not in {DEAL_PENDING, DEAL_LISTED, DEAL_CANCELLED}
-        req = seller_req_text(seller, lang) if show_req and seller else t(lang, "not_set")
-        receipt = t(lang, "deal_receipt_yes") if deal["receipt_id"] else t(lang, "deal_receipt_none")
-        key = "deal_opened_nft" if is_nft_deal(deal) else "deal_opened_req"
-        return t(
-            lang,
-            key,
-            id=deal["id"],
-            cat=cat,
-            title=h(title) if title else cat,
-            buyer=username_of(buyer) if buyer else "-",
-            buyer_id=deal["buyer_id"] or "—",
-            seller=username_of(seller) if seller else "-",
-            seller_id=deal["seller_id"] or "—",
-            amount=amount,
-            nft=nft_title(nft) if nft else t(lang, "deal_nft_none"),
-            req=req,
-            receipt=receipt,
-            desc=h(deal["description"]) if deal["description"] else "—",
-            status=t(lang, deal_status_key(deal["status"])),
-        )
+    live = deal["status"] not in {DEAL_PENDING, DEAL_LISTED, DEAL_CANCELLED, DEAL_CLOSED}
+    secret_raw = ""
+    try:
+        secret_raw = (deal["secret"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        secret_raw = ""
+    if live and secret_raw:
+        secret = h(secret_raw)
+    elif secret_raw:
+        secret = t(lang, "deal_secret_hidden")
+    else:
+        secret = "—"
+    key = "deal_opened_nft" if is_nft_deal(deal) else "deal_opened"
     return t(
         lang,
-        "deal_opened",
+        key,
         id=deal["id"],
         cat=cat,
         title=h(title) if title else cat,
         buyer=username_of(buyer) if buyer else "-",
         buyer_id=deal["buyer_id"] or "—",
         seller=username_of(seller) if seller else "-",
-        seller_id=deal["seller_id"],
+        seller_id=deal["seller_id"] or "—",
         amount=amount,
+        nft=nft_title(nft) if nft else t(lang, "deal_nft_none"),
+        secret=secret,
         desc=h(deal["description"]) if deal["description"] else "—",
         status=t(lang, deal_status_key(deal["status"])),
     )
@@ -257,12 +253,8 @@ async def render_deal(db, deal, lang: str, currency: str, escrow: str = "") -> s
 
 def history_line(deal, user_id: int, peer_name: str, lang: str, currency: str) -> str:
     seller = user_id == deal["seller_id"]
-    if is_ton_deal(deal):
-        amount = f"{money_ton(deal['ton_amount'])} TON / {money(deal['rub_amount'])} ₽"
-    elif is_nft_deal(deal):
-        amount = f"{money(deal['amount'])} ₽" if deal["amount"] else "—"
-    else:
-        amount = f"{money(deal['amount'])} {currency}" if deal["amount"] else "—"
+    asset = deal_asset(deal)
+    amount = f"{money_asset(deal['amount'], asset)} {asset}" if deal["amount"] else "—"
     return t(
         lang,
         "history_line",
