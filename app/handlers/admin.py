@@ -12,6 +12,7 @@ from app.keyboards import (
     AdminCB,
     BtnCB,
     NavCB,
+    admin_bal_asset_kb,
     admin_kb,
     admins_kb,
     bans_kb,
@@ -33,7 +34,7 @@ from app.services import deals as svc
 from app.services.deals import DealError
 from app.states import AdminFlow
 from app.storage import WALLET_DONE, WALLET_REJECTED, Storage
-from app.util import ban_notice, deal_asset, extract_emoji_id, is_cancel, money, money_asset, parse_amount, paint
+from app.util import ban_notice, deal_asset, extract_emoji_id, is_cancel, money, money_asset, parse_amount, parse_ton, paint
 
 router = Router()
 
@@ -79,6 +80,20 @@ CFG_FIELDS = set(WALLET_FIELDS) | set(SESSION_FIELDS)
 
 def _admin(settings: Settings, user_id: int) -> bool:
     return settings.is_admin(user_id)
+
+
+async def _deny(call: CallbackQuery, lang: str, settings: Settings) -> bool:
+    if _admin(settings, call.from_user.id):
+        return False
+    await call.answer(t(lang, "admin_only"), show_alert=True)
+    return True
+
+
+async def _deny_msg(message: Message, lang: str, settings: Settings) -> bool:
+    if _admin(settings, message.from_user.id):
+        return False
+    await message.answer(t(lang, "admin_only"))
+    return True
 
 
 def _mask(value: str, keep: int = 6) -> str:
@@ -127,24 +142,21 @@ def _save_admins(settings: Settings, ids: list[int]) -> None:
 
 @router.message(Command("admin"))
 async def admin_entry(message: Message, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, message.from_user.id):
-        await message.answer(t(lang, "admin_only"))
+    if await _deny_msg(message, lang, settings):
         return
     await message.answer(t(lang, "admin_menu"), reply_markup=admin_kb(lang, theme))
 
 
 @router.callback_query(NavCB.filter(F.a == "admin"))
 async def admin_nav(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
-        await call.answer(t(lang, "admin_only"), show_alert=True)
+    if await _deny(call, lang, settings):
         return
     await paint(call, t(lang, "admin_menu"), admin_kb(lang, theme), settings=settings)
 
 
 @router.callback_query(AdminCB.filter(F.a == "stats"))
 async def stats(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme, bank: BankAccount):
-    if not _admin(settings, call.from_user.id):
-        await call.answer(t(lang, "admin_only"), show_alert=True)
+    if await _deny(call, lang, settings):
         return
     info = await db.stats()
     status_lines = []
@@ -209,7 +221,7 @@ async def stats(call: CallbackQuery, db: Storage, lang: str, settings: Settings,
 
 @router.callback_query(AdminCB.filter(F.a == "ban"))
 async def ask_ban(call: CallbackQuery, state: FSMContext, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await state.set_state(AdminFlow.ban_id)
     await call.message.answer(t(lang, "admin_ask_ban"), reply_markup=cancel_kb(lang, theme))
@@ -218,7 +230,7 @@ async def ask_ban(call: CallbackQuery, state: FSMContext, lang: str, settings: S
 
 @router.callback_query(AdminCB.filter(F.a == "unban"))
 async def ask_unban(call: CallbackQuery, state: FSMContext, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await state.set_state(AdminFlow.unban_id)
     await call.message.answer(t(lang, "admin_ask_id"), reply_markup=cancel_kb(lang, theme))
@@ -226,7 +238,9 @@ async def ask_unban(call: CallbackQuery, state: FSMContext, lang: str, settings:
 
 
 @router.message(AdminFlow.ban_id)
-async def do_ban(message: Message, state: FSMContext, db: Storage, lang: str, theme: Theme):
+async def do_ban(message: Message, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     raw = (message.text or "").strip()
@@ -245,6 +259,8 @@ async def do_ban(message: Message, state: FSMContext, db: Storage, lang: str, th
 
 @router.message(AdminFlow.ban_reason)
 async def do_ban_reason(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     reason = (message.text or "").strip()
@@ -268,7 +284,9 @@ async def do_ban_reason(message: Message, state: FSMContext, db: Storage, lang: 
 
 
 @router.message(AdminFlow.unban_id)
-async def do_unban(message: Message, state: FSMContext, db: Storage, lang: str):
+async def do_unban(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     if not (message.text or "").isdigit():
@@ -282,7 +300,7 @@ async def do_unban(message: Message, state: FSMContext, db: Storage, lang: str):
 
 @router.callback_query(AdminCB.filter(F.a == "bal"))
 async def ask_balance_id(call: CallbackQuery, state: FSMContext, lang: str, settings: Settings):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await state.set_state(AdminFlow.balance_id)
     await call.message.answer(t(lang, "admin_ask_id"))
@@ -290,7 +308,9 @@ async def ask_balance_id(call: CallbackQuery, state: FSMContext, lang: str, sett
 
 
 @router.message(AdminFlow.balance_id)
-async def ask_balance_amount(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings):
+async def ask_balance_asset(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     if not (message.text or "").isdigit():
@@ -302,27 +322,52 @@ async def ask_balance_amount(message: Message, state: FSMContext, db: Storage, l
         await state.clear()
         return
     await state.update_data(target_id=user["user_id"])
+    await message.answer(t(lang, "admin_ask_balance_asset"), reply_markup=admin_bal_asset_kb(lang, theme))
+
+
+@router.callback_query(AdminCB.filter(F.a == "balcur"))
+async def ask_balance_amount(call: CallbackQuery, callback_data: AdminCB, state: FSMContext, lang: str, settings: Settings, theme: Theme):
+    if await _deny(call, lang, settings):
+        return
+    asset = "TON" if callback_data.k == "TON" else "USDT"
+    data = await state.get_data()
+    if not data.get("target_id"):
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    await state.update_data(asset=asset)
     await state.set_state(AdminFlow.balance_amount)
-    await message.answer(t(lang, "admin_ask_balance", currency=settings.currency))
+    await paint(call, t(lang, "admin_ask_balance", currency=asset), cancel_kb(lang, theme), settings=settings)
 
 
 @router.message(AdminFlow.balance_amount)
-async def set_balance(message: Message, state: FSMContext, db: Storage, lang: str):
+async def set_balance(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
-    amount = parse_amount((message.text or "").lstrip("+"))
+    data = await state.get_data()
+    asset = "TON" if data.get("asset") == "TON" else "USDT"
+    amount = parse_ton(message.text or "") if asset == "TON" else parse_amount((message.text or "").lstrip("+"))
     if amount is None:
         await message.answer(t(lang, "req_bad"))
         return
-    data = await state.get_data()
-    await db.set_balance(data["target_id"], amount)
+    user = await db.get_user(int(data["target_id"]))
+    if user is None:
+        await message.answer(t(lang, "admin_user_missing"))
+        await state.clear()
+        return
+    frozen = db.frozen_of(user, asset)
+    if amount + 1e-12 < frozen:
+        await message.answer(t(lang, "admin_balance_frozen", frozen=money_asset(frozen, asset), currency=asset))
+        return
+    await db.set_asset(int(data["target_id"]), asset, amount)
     await state.clear()
     await message.answer(t(lang, "admin_done"))
 
 
 @router.callback_query(AdminCB.filter(F.a == "mail"))
 async def ask_mail(call: CallbackQuery, state: FSMContext, lang: str, settings: Settings):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await state.set_state(AdminFlow.mail)
     await call.message.answer(t(lang, "admin_ask_mail"))
@@ -330,7 +375,9 @@ async def ask_mail(call: CallbackQuery, state: FSMContext, lang: str, settings: 
 
 
 @router.message(AdminFlow.mail)
-async def send_mail(message: Message, state: FSMContext, db: Storage, lang: str):
+async def send_mail(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     text = message.html_text or message.text or ""
@@ -349,7 +396,7 @@ async def send_mail(message: Message, state: FSMContext, db: Storage, lang: str)
 
 @router.callback_query(AdminCB.filter(F.a == "disp"))
 async def disputes(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     rows = await db.open_disputes()
     if not rows:
@@ -386,7 +433,7 @@ async def disputes(call: CallbackQuery, db: Storage, lang: str, settings: Settin
 
 @router.callback_query(AdminCB.filter(F.a == "win_b"))
 async def win_buyer(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings, ton):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     try:
         await svc.verdict_buyer(db, callback_data.i, ton)
@@ -413,7 +460,7 @@ async def win_buyer(call: CallbackQuery, callback_data: AdminCB, db: Storage, la
 
 @router.callback_query(AdminCB.filter(F.a == "win_s"))
 async def win_seller(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings, ton):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     try:
         await svc.verdict_seller(db, settings, callback_data.i, ton)
@@ -440,7 +487,7 @@ async def win_seller(call: CallbackQuery, callback_data: AdminCB, db: Storage, l
 
 @router.callback_query(AdminCB.filter(F.a == "deps"))
 async def deposits(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     rows = await db.pending_deposits()
     if not rows:
@@ -471,7 +518,7 @@ async def deposits(call: CallbackQuery, db: Storage, lang: str, settings: Settin
 
 @router.callback_query(AdminCB.filter(F.a == "wds"))
 async def withdraws(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     rows = await db.pending_withdraws()
     if not rows:
@@ -503,7 +550,7 @@ async def withdraws(call: CallbackQuery, db: Storage, lang: str, settings: Setti
 
 @router.callback_query(AdminCB.filter(F.a == "dep_ok"))
 async def dep_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     deposit = await db.get_deposit(callback_data.i)
     if deposit is None or deposit["status"] != "pending":
@@ -533,7 +580,7 @@ async def dep_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang:
 
 @router.callback_query(AdminCB.filter(F.a == "dep_no"))
 async def dep_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     deposit = await db.get_deposit(callback_data.i)
     if deposit is None or deposit["status"] != "pending":
@@ -547,7 +594,7 @@ async def dep_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang:
 
 @router.callback_query(AdminCB.filter(F.a == "wd_ok"))
 async def wd_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     item = await db.get_withdraw(callback_data.i)
     if item is None or item["status"] != "pending":
@@ -561,7 +608,7 @@ async def wd_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: 
 
 @router.callback_query(AdminCB.filter(F.a == "wd_no"))
 async def wd_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     item = await db.get_withdraw(callback_data.i)
     if item is None or item["status"] != "pending":
@@ -583,31 +630,28 @@ async def wd_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: 
 
 @router.callback_query(AdminCB.filter(F.a == "home"))
 async def admin_home(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await paint(call, t(lang, "admin_menu"), admin_kb(lang, theme), settings=settings)
 
 
 @router.callback_query(AdminCB.filter(F.a == "wal"))
 async def admin_wallets(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
-        await call.answer(t(lang, "admin_only"), show_alert=True)
+    if await _deny(call, lang, settings):
         return
     await paint(call, _wallets_text(settings, lang), cfg_fields_kb(lang, theme, list(WALLET_FIELDS)), settings=settings)
 
 
 @router.callback_query(AdminCB.filter(F.a == "sess"))
 async def admin_sessions(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
-        await call.answer(t(lang, "admin_only"), show_alert=True)
+    if await _deny(call, lang, settings):
         return
     await paint(call, _sessions_text(settings, lang), cfg_fields_kb(lang, theme, list(SESSION_FIELDS)), settings=settings)
 
 
 @router.callback_query(AdminCB.filter(F.a == "adms"))
 async def admin_admins(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
-        await call.answer(t(lang, "admin_only"), show_alert=True)
+    if await _deny(call, lang, settings):
         return
     await paint(call, _admins_text(settings, lang), admins_kb(lang, theme, sorted(settings.admins)), settings=settings)
 
@@ -621,8 +665,7 @@ async def admin_cfg_ask(
     settings: Settings,
     theme: Theme,
 ):
-    if not _admin(settings, call.from_user.id):
-        await call.answer(t(lang, "admin_only"), show_alert=True)
+    if await _deny(call, lang, settings):
         return
     field = callback_data.k
     if field not in CFG_FIELDS:
@@ -648,7 +691,7 @@ async def admin_cfg_save(
     bank: BankAccount,
     ton,
 ):
-    if not _admin(settings, message.from_user.id):
+    if await _deny_msg(message, lang, settings):
         return
     if is_cancel(message.text or ""):
         return
@@ -667,16 +710,19 @@ async def admin_cfg_save(
         return
     await state.clear()
     note = t(lang, "admin_cfg_saved", key=t(lang, f"admin_cfg_{field}"))
+    svc_name = ""
     try:
         if field in TON_RELOAD:
+            svc_name = "TON"
             await ton.close()
             await ton.connect()
-            note += "\n" + t(lang, "admin_cfg_reconnect", svc="TON")
+            note += "\n" + t(lang, "admin_cfg_reconnect", svc=svc_name)
         elif field in BANK_RELOAD:
+            svc_name = "bank"
             await bank.restart()
-            note += "\n" + t(lang, "admin_cfg_reconnect", svc="bank")
+            note += "\n" + t(lang, "admin_cfg_reconnect", svc=svc_name)
     except Exception:
-        pass
+        note += "\n" + t(lang, "admin_cfg_reconnect_fail", svc=svc_name or "service")
     kind = WALLET_FIELDS if field in WALLET_FIELDS else SESSION_FIELDS
     text = _wallets_text(settings, lang) if field in WALLET_FIELDS else _sessions_text(settings, lang)
     await message.answer(note + "\n\n" + text, reply_markup=cfg_fields_kb(lang, theme, list(kind)))
@@ -684,8 +730,7 @@ async def admin_cfg_save(
 
 @router.callback_query(AdminCB.filter(F.a == "admadd"))
 async def admin_add_ask(call: CallbackQuery, state: FSMContext, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
-        await call.answer(t(lang, "admin_only"), show_alert=True)
+    if await _deny(call, lang, settings):
         return
     await state.set_state(AdminFlow.adm_add)
     await paint(call, t(lang, "admin_adm_ask"), cancel_kb(lang, theme), settings=settings)
@@ -693,7 +738,7 @@ async def admin_add_ask(call: CallbackQuery, state: FSMContext, lang: str, setti
 
 @router.message(AdminFlow.adm_add, F.text)
 async def admin_add_save(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, message.from_user.id):
+    if await _deny_msg(message, lang, settings):
         return
     if is_cancel(message.text or ""):
         return
@@ -728,8 +773,7 @@ async def admin_add_save(message: Message, state: FSMContext, db: Storage, lang:
 
 @router.callback_query(AdminCB.filter(F.a == "admrm"))
 async def admin_remove(call: CallbackQuery, callback_data: AdminCB, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
-        await call.answer(t(lang, "admin_only"), show_alert=True)
+    if await _deny(call, lang, settings):
         return
     uid = int(callback_data.i)
     if uid == call.from_user.id:
@@ -763,14 +807,14 @@ def _btn_card(lang: str, theme: Theme, key: str) -> str:
 
 @router.callback_query(BtnCB.filter(F.a == "list"))
 async def btn_list(call: CallbackQuery, callback_data: BtnCB, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await paint(call, t(lang, "admin_btn_pick"), buttons_list_kb(lang, theme, callback_data.p), settings=settings)
 
 
 @router.callback_query(BtnCB.filter(F.a == "open"))
 async def btn_open(call: CallbackQuery, callback_data: BtnCB, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     key = callback_data.k
     if key not in KEYS:
@@ -781,7 +825,7 @@ async def btn_open(call: CallbackQuery, callback_data: BtnCB, lang: str, setting
 
 @router.callback_query(BtnCB.filter(F.a == "color"))
 async def btn_color(call: CallbackQuery, callback_data: BtnCB, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await paint(
         call,
@@ -793,7 +837,7 @@ async def btn_color(call: CallbackQuery, callback_data: BtnCB, lang: str, settin
 
 @router.callback_query(BtnCB.filter(F.a == "setst"))
 async def btn_set_style(call: CallbackQuery, callback_data: BtnCB, db: Storage, lang: str, settings: Settings):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     key = callback_data.k
     style = None if callback_data.s in {"-", "none"} else callback_data.s
@@ -809,7 +853,7 @@ async def btn_set_style(call: CallbackQuery, callback_data: BtnCB, db: Storage, 
 
 @router.callback_query(BtnCB.filter(F.a == "reset"))
 async def btn_reset(call: CallbackQuery, callback_data: BtnCB, db: Storage, lang: str, settings: Settings):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await db.reset_button(callback_data.k)
     theme = Theme(await db.button_map())
@@ -823,7 +867,7 @@ async def btn_reset(call: CallbackQuery, callback_data: BtnCB, db: Storage, lang
 
 @router.callback_query(BtnCB.filter(F.a == "name"))
 async def btn_name(call: CallbackQuery, callback_data: BtnCB, state: FSMContext, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await state.set_state(AdminFlow.btn_name_ru)
     await state.update_data(btn_key=callback_data.k, btn_page=callback_data.p)
@@ -832,7 +876,9 @@ async def btn_name(call: CallbackQuery, callback_data: BtnCB, state: FSMContext,
 
 
 @router.message(AdminFlow.btn_name_ru)
-async def btn_name_ru(message: Message, state: FSMContext, lang: str, theme: Theme):
+async def btn_name_ru(message: Message, state: FSMContext, lang: str, theme: Theme, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     label = (message.text or "").strip()
@@ -845,7 +891,9 @@ async def btn_name_ru(message: Message, state: FSMContext, lang: str, theme: The
 
 
 @router.message(AdminFlow.btn_name_en)
-async def btn_name_en(message: Message, state: FSMContext, db: Storage, lang: str):
+async def btn_name_en(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     data = await state.get_data()
@@ -868,7 +916,7 @@ async def btn_name_en(message: Message, state: FSMContext, db: Storage, lang: st
 
 @router.callback_query(BtnCB.filter(F.a == "emoji"))
 async def btn_emoji(call: CallbackQuery, callback_data: BtnCB, state: FSMContext, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await state.set_state(AdminFlow.btn_emoji)
     await state.update_data(btn_key=callback_data.k, btn_page=callback_data.p)
@@ -877,7 +925,9 @@ async def btn_emoji(call: CallbackQuery, callback_data: BtnCB, state: FSMContext
 
 
 @router.message(AdminFlow.btn_emoji)
-async def btn_emoji_save(message: Message, state: FSMContext, db: Storage, lang: str):
+async def btn_emoji_save(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     data = await state.get_data()
@@ -901,7 +951,7 @@ async def btn_emoji_save(message: Message, state: FSMContext, db: Storage, lang:
 
 @router.callback_query(AdminCB.filter(F.a == "bans"))
 async def bans_list(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     rows = await db.banned_users()
     if not rows:
@@ -923,7 +973,7 @@ async def bans_list(call: CallbackQuery, db: Storage, lang: str, settings: Setti
 
 @router.callback_query(AdminCB.filter(F.a == "unbani"))
 async def unban_row(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await db.set_banned(callback_data.i, False)
     await call.answer(t(lang, "admin_unbanned", id=callback_data.i), show_alert=True)
@@ -933,7 +983,7 @@ async def unban_row(call: CallbackQuery, callback_data: AdminCB, db: Storage, la
 
 @router.callback_query(AdminCB.filter(F.a == "faq"))
 async def faq_admin(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     items = await db.faq_all()
     text = t(lang, "admin_faq") if items else t(lang, "admin_faq_empty")
@@ -942,7 +992,7 @@ async def faq_admin(call: CallbackQuery, db: Storage, lang: str, settings: Setti
 
 @router.callback_query(AdminCB.filter(F.a == "faqadd"))
 async def faq_add(call: CallbackQuery, state: FSMContext, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await state.set_state(AdminFlow.faq_title_ru)
     await call.message.answer(t(lang, "admin_faq_ask_title_ru"), reply_markup=cancel_kb(lang, theme))
@@ -950,7 +1000,9 @@ async def faq_add(call: CallbackQuery, state: FSMContext, lang: str, settings: S
 
 
 @router.message(AdminFlow.faq_title_ru)
-async def faq_title_ru(message: Message, state: FSMContext, lang: str, theme: Theme):
+async def faq_title_ru(message: Message, state: FSMContext, lang: str, theme: Theme, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     title = (message.text or "").strip()
@@ -963,7 +1015,9 @@ async def faq_title_ru(message: Message, state: FSMContext, lang: str, theme: Th
 
 
 @router.message(AdminFlow.faq_title_en)
-async def faq_title_en(message: Message, state: FSMContext, lang: str, theme: Theme):
+async def faq_title_en(message: Message, state: FSMContext, lang: str, theme: Theme, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     data = await state.get_data()
@@ -976,7 +1030,9 @@ async def faq_title_en(message: Message, state: FSMContext, lang: str, theme: Th
 
 
 @router.message(AdminFlow.faq_body_ru)
-async def faq_body_ru(message: Message, state: FSMContext, lang: str, theme: Theme):
+async def faq_body_ru(message: Message, state: FSMContext, lang: str, theme: Theme, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     body = (message.html_text or message.text or "").strip()
@@ -989,7 +1045,9 @@ async def faq_body_ru(message: Message, state: FSMContext, lang: str, theme: The
 
 
 @router.message(AdminFlow.faq_body_en)
-async def faq_body_en(message: Message, state: FSMContext, lang: str, theme: Theme):
+async def faq_body_en(message: Message, state: FSMContext, lang: str, theme: Theme, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     data = await state.get_data()
@@ -1002,7 +1060,9 @@ async def faq_body_en(message: Message, state: FSMContext, lang: str, theme: The
 
 
 @router.message(AdminFlow.faq_photo)
-async def faq_photo_save(message: Message, state: FSMContext, db: Storage, lang: str, theme: Theme):
+async def faq_photo_save(message: Message, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     data = await state.get_data()
@@ -1026,7 +1086,7 @@ async def faq_photo_save(message: Message, state: FSMContext, db: Storage, lang:
 
 @router.callback_query(AdminCB.filter(F.a == "faqo"))
 async def faq_admin_open(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     item = await db.get_faq(callback_data.i)
     if item is None:
@@ -1038,7 +1098,7 @@ async def faq_admin_open(call: CallbackQuery, callback_data: AdminCB, db: Storag
 
 @router.callback_query(AdminCB.filter(F.a == "faqdel"))
 async def faq_del(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await db.delete_faq(callback_data.i)
     items = await db.faq_all()
@@ -1047,7 +1107,7 @@ async def faq_del(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang
 
 @router.callback_query(AdminCB.filter(F.a == "faqph"))
 async def faq_photo_ask(call: CallbackQuery, callback_data: AdminCB, state: FSMContext, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await state.set_state(AdminFlow.faq_photo)
     await state.update_data(faq_edit=callback_data.i)
@@ -1057,7 +1117,7 @@ async def faq_photo_ask(call: CallbackQuery, callback_data: AdminCB, state: FSMC
 
 @router.callback_query(AdminCB.filter(F.a == "scr"))
 async def screens_admin(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     mapping = await db.screen_map()
     lines = [t(lang, "admin_screens_pick"), ""]
@@ -1069,7 +1129,7 @@ async def screens_admin(call: CallbackQuery, db: Storage, lang: str, settings: S
 
 @router.callback_query(AdminCB.filter(F.a == "scrset"))
 async def screen_ask(call: CallbackQuery, callback_data: AdminCB, state: FSMContext, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     key = callback_data.k
     if key not in SCREENS:
@@ -1082,7 +1142,9 @@ async def screen_ask(call: CallbackQuery, callback_data: AdminCB, state: FSMCont
 
 
 @router.message(AdminFlow.screen_photo)
-async def screen_save(message: Message, state: FSMContext, db: Storage, lang: str):
+async def screen_save(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     data = await state.get_data()
@@ -1106,7 +1168,7 @@ async def screen_save(message: Message, state: FSMContext, db: Storage, lang: st
 
 @router.callback_query(AdminCB.filter(F.a == "disr"))
 async def dispute_reply_ask(call: CallbackQuery, callback_data: AdminCB, state: FSMContext, lang: str, settings: Settings, theme: Theme):
-    if not _admin(settings, call.from_user.id):
+    if await _deny(call, lang, settings):
         return
     await state.set_state(AdminFlow.dispute_reply)
     await state.update_data(deal_id=callback_data.i)
@@ -1116,6 +1178,8 @@ async def dispute_reply_ask(call: CallbackQuery, callback_data: AdminCB, state: 
 
 @router.message(AdminFlow.dispute_reply)
 async def dispute_reply(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
+    if await _deny_msg(message, lang, settings):
+        return
     if is_cancel(message.text or ""):
         return
     data = await state.get_data()

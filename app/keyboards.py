@@ -6,6 +6,7 @@ from app.buttons import KEYS, PAGE_SIZE, STYLES, Theme
 from app.i18n import t
 from app.storage import DEAL_DISPUTE, DEAL_LISTED, DEAL_OPEN, DEAL_PENDING, DEAL_REVIEW, Storage
 from app import ctx
+from app.util import is_nft_deal
 
 
 class LangCB(CallbackData, prefix="lang"):
@@ -225,21 +226,27 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int, seller_row=None) -> Inl
     status = deal["status"]
     is_seller = user_id == deal["seller_id"]
     owner = int(deal["seller_id"] or 0) or int(deal["buyer_id"] or 0)
+    sent = bool(deal["nft_sent"])
+    nft = is_nft_deal(deal)
     if status == DEAL_PENDING and is_seller:
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
+    if status == DEAL_PENDING and not is_seller:
+        theme.add(kb, "deal_decline", lang, callback_data=DealCB(a="dec", i=deal["id"]).pack())
     if status == DEAL_LISTED and user_id == owner:
         theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())
         theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
     if status == DEAL_OPEN and not is_seller:
         theme.add(kb, "deal_manual_btn", lang, callback_data=DealCB(a="memo", i=deal["id"]).pack())
-        theme.add(kb, "deal_confirm", lang, callback_data=DealCB(a="ok", i=deal["id"]).pack())
+        if not nft or sent:
+            theme.add(kb, "deal_confirm", lang, callback_data=DealCB(a="ok", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
+        if not sent:
+            theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
     if status == DEAL_OPEN and is_seller:
         theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
-        theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
-    if status == DEAL_OPEN and not is_seller:
-        theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
+        if not sent:
+            theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
     if status == DEAL_DISPUTE:
         theme.add(kb, "deal_dispute_thread", lang, callback_data=DealCB(a="disth", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute_evidence", lang, callback_data=DealCB(a="disev", i=deal["id"]).pack())
@@ -325,6 +332,15 @@ def admin_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
     theme.add(kb, "admin_buttons", lang, callback_data=BtnCB(a="list", p=0).pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
     kb.adjust(2)
+    return kb.as_markup()
+
+
+def admin_bal_asset_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    theme.add(kb, "deposit_asset_usdt", lang, callback_data=AdminCB(a="balcur", k="USDT").pack())
+    theme.add(kb, "deposit_asset_ton", lang, callback_data=AdminCB(a="balcur", k="TON").pack())
+    theme.add(kb, "btn_back", lang, callback_data=AdminCB(a="home").pack())
+    kb.adjust(1)
     return kb.as_markup()
 
 

@@ -11,7 +11,7 @@ from app.keyboards import NavCB, WalletCB, asset_pick_kb, cancel_kb, deposit_kb,
 from app.services.ton import incoming_by_comment, incoming_usdt_by_comment
 from app.states import Requisites, Wallet
 from app.storage import WALLET_DONE, WALLET_PENDING, Storage
-from app.util import deal_asset, is_cancel, money_asset, paint, parse_amount, parse_ton, valid_ton
+from app.util import is_cancel, money_asset, paint, parse_amount, parse_ton, valid_ton
 
 router = Router()
 

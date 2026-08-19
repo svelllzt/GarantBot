@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.i18n import EN, RU
 from app.services.ton import ton_to_currency
-from app.storage import DEAL_CLOSED, DEAL_LISTED, DEAL_OPEN, NFT_AVAILABLE, NFT_LOCKED, Storage
+from app.storage import DEAL_CLOSED, DEAL_LISTED, DEAL_OPEN, NFT_AVAILABLE, NFT_LOCKED, NFT_TRANSFERRED, Storage
 from app.util import seller_payout
 
 
@@ -203,12 +203,24 @@ async def main() -> None:
         assert abs(db.available(buyer_row, "USDT")) < 1e-9
         assert abs(db.frozen_of(buyer_row, "USDT") - 15) < 1e-9
         settings = Settings(dict(DEFAULTS), Path("config.ini"))
+        try:
+            await dsvc.complete(db, settings, listed_nft, 2)
+            raise AssertionError("nft complete before send must fail")
+        except DealErr as exc:
+            assert exc.key == "deal_nft_wait_send"
+        await db.touch_deal(listed_nft, nft_sent=1)
+        try:
+            await dsvc.cancel_mutual(db, listed_nft)
+            raise AssertionError("cancel after nft send must fail")
+        except DealErr as exc:
+            assert exc.key == "deal_cancel_denied"
         payout = await dsvc.complete(db, settings, listed_nft, 2)
         assert abs(payout - seller_payout(15, settings.commission_percent, "USDT")) < 1e-9
         seller_row = await db.get_user(1)
         buyer_row = await db.get_user(2)
         assert abs(db.frozen_of(buyer_row, "USDT")) < 1e-9
         assert abs(db.available(seller_row, "USDT") - payout) < 1e-9
+        assert (await db.get_nft(nft_id))["status"] == NFT_TRANSFERRED
         await db.touch_deal(listed_nft, status=DEAL_CLOSED)
         await db.set_nft_status(nft_id, NFT_AVAILABLE, deal_id=None)
 
@@ -261,6 +273,22 @@ async def main() -> None:
         buyer_row = await db.get_user(2)
         assert abs(db.frozen_of(buyer_row, "TON")) < 1e-9
         assert abs(db.available(seller4, "TON") - payout_ton) < 1e-9
+        await db.touch_deal(acc_id, status=DEAL_CLOSED)
+
+        nft_d = await db.add_nft(1, gift_id="g5", slug="giftd", title="D", num=5, msg_id=102, from_user_id=1, is_unique=True)
+        offer = await dsvc.open_offer(db, 1, 2, category="nft", title="GiftD", nft_id=nft_d, amount=3, currency="USDT")
+        assert (await db.get_nft(nft_d))["status"] == NFT_LOCKED
+        await dsvc.decline(db, offer, 2)
+        assert (await db.get_nft(nft_d))["status"] == NFT_AVAILABLE
+        await db.credit_asset(2, "USDT", 10)
+        listed2 = await dsvc.create_listing(db, 1, "nft", "Gift2", 4, "x", nft_id=nft_d, currency="USDT")
+        await dsvc.take_listing(db, listed2, 2)
+        await db.touch_deal(listed2, nft_sent=1)
+        await dsvc.open_dispute(db, listed2, 2, "bad")
+        await dsvc.verdict_buyer(db, listed2)
+        nft_after = await db.get_nft(nft_d)
+        assert nft_after["status"] == NFT_TRANSFERRED
+        assert nft_after["owner_id"] == 2
 
         cfg_fd, cfg_path = tempfile.mkstemp(suffix=".ini")
         os.close(cfg_fd)

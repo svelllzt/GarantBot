@@ -614,9 +614,10 @@ async def decline_offer(call: CallbackQuery, callback_data: DealCB, db: Storage,
         settings=settings,
     )
     other = deal["seller_id"] if deal["buyer_id"] == call.from_user.id else deal["buyer_id"]
-    other_user = await db.get_user(other)
-    other_lang = other_user["lang"] or "ru"
-    await call.bot.send_message(other, t(other_lang, "deal_declined_peer"), reply_markup=await home_kb(db, other, other_lang, theme))
+    other_user = await db.get_user(other) if other else None
+    if other and other_user:
+        other_lang = other_user["lang"] or "ru"
+        await call.bot.send_message(other, t(other_lang, "deal_declined_peer"), reply_markup=await home_kb(db, other, other_lang, theme))
 
 
 @router.callback_query(DealCB.filter(F.a == "open"))
@@ -826,6 +827,9 @@ async def cancel_ask(call: CallbackQuery, callback_data: DealCB, db: Storage, la
     if deal["status"] in {DEAL_DISPUTE, DEAL_REVIEW, DEAL_CLOSED}:
         await call.answer(t(lang, "deal_cancel_denied"), show_alert=True)
         return
+    if deal["nft_sent"]:
+        await call.answer(t(lang, "deal_cancel_denied"), show_alert=True)
+        return
     if deal["status"] == DEAL_LISTED:
         if listing_owner(deal) != call.from_user.id:
             await call.answer(t(lang, "error"), show_alert=True)
@@ -863,6 +867,9 @@ async def cancel_send(call: CallbackQuery, callback_data: DealCB, db: Storage, l
         await call.answer(t(lang, "error"), show_alert=True)
         return
     if deal["status"] in {DEAL_DISPUTE, DEAL_REVIEW, DEAL_CLOSED}:
+        await call.answer(t(lang, "deal_cancel_denied"), show_alert=True)
+        return
+    if deal["nft_sent"]:
         await call.answer(t(lang, "deal_cancel_denied"), show_alert=True)
         return
     other = deal["seller_id"] if call.from_user.id == deal["buyer_id"] else deal["buyer_id"]
@@ -912,9 +919,6 @@ async def dispute(call: CallbackQuery, callback_data: DealCB, state: FSMContext,
         await call.answer(t(lang, "error"), show_alert=True)
         return
     if deal["status"] != DEAL_OPEN:
-        await call.answer(t(lang, "error"), show_alert=True)
-        return
-    if deal["status"] == DEAL_REVIEW and not (is_nft_deal(deal) and not deal["nft_sent"]):
         await call.answer(t(lang, "error"), show_alert=True)
         return
     await state.set_state(DealFlow.dispute_reason)
@@ -1019,10 +1023,11 @@ async def dispute_evidence_start(call: CallbackQuery, callback_data: DealCB, sta
 
 
 @router.callback_query(DealCB.filter(F.a == "disdone"))
-async def dispute_evidence_done(call: CallbackQuery, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+async def dispute_evidence_done(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
     data = await state.get_data()
     await state.clear()
-    deal = await db.get_deal(int(data.get("deal_id") or 0))
+    deal_id = int(callback_data.i or data.get("deal_id") or 0)
+    deal = await db.get_deal(deal_id)
     if deal:
         await _show_deal(call.bot, db, deal, call.from_user.id, lang, settings, theme, event=call, ton=ton)
         return

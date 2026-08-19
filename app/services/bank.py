@@ -419,13 +419,13 @@ class BankAccount:
             fresh = await self.db.get_deal(deal["id"])
             if fresh is None or fresh["nft_sent"] or not fresh["nft_id"] or not fresh["buyer_id"]:
                 continue
-            if fresh["status"] not in {DEAL_OPEN, DEAL_DISPUTE, DEAL_REVIEW}:
+            if fresh["status"] not in {DEAL_OPEN, DEAL_DISPUTE, DEAL_REVIEW, DEAL_CLOSED}:
                 continue
             nft = await self.db.get_nft(fresh["nft_id"])
             result = await self.transfer(nft, fresh["buyer_id"])
             if result == "ok":
                 await self.db.touch_deal(fresh["id"], nft_sent=1)
-                if fresh["status"] in {DEAL_REVIEW}:
+                if fresh["status"] in {DEAL_REVIEW, DEAL_CLOSED}:
                     await self.db.set_nft_status(
                         fresh["nft_id"],
                         NFT_TRANSFERRED,

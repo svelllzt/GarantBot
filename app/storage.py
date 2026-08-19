@@ -28,10 +28,6 @@ ACTIVE_DEALS = (
     DEAL_PENDING,
     DEAL_LISTED,
     DEAL_OPEN,
-    DEAL_WAIT_TON,
-    DEAL_FUNDED,
-    DEAL_RUB_SENT,
-    DEAL_PAID,
     DEAL_DISPUTE,
     DEAL_REVIEW,
 )
@@ -564,11 +560,11 @@ class Storage:
             (DEAL_CLOSED,),
         )
         escrow = await self.fetchone(
-            f"""
+            """
             SELECT COALESCE(SUM(amount), 0) AS s FROM deals
-            WHERE status IN (?, ?, ?)
+            WHERE status IN (?, ?)
             """,
-            (DEAL_OPEN, DEAL_DISPUTE, DEAL_REVIEW),
+            (DEAL_OPEN, DEAL_DISPUTE),
         )
         by_status = await self.fetchall(
             "SELECT status, COUNT(*) AS c FROM deals GROUP BY status"
@@ -603,10 +599,10 @@ class Storage:
             """
             SELECT * FROM deals
             WHERE nft_id IS NOT NULL AND nft_sent = 0 AND buyer_id != 0
-              AND status IN (?, ?, ?)
+              AND status IN (?, ?, ?, ?)
             ORDER BY id
             """,
-            (DEAL_OPEN, DEAL_DISPUTE, DEAL_REVIEW),
+            (DEAL_OPEN, DEAL_DISPUTE, DEAL_REVIEW, DEAL_CLOSED),
         )
 
     async def create_deal(
@@ -740,6 +736,37 @@ class Storage:
                 values.append(value)
         cur = await self.execute(
             f"UPDATE deals SET {', '.join(sets)} WHERE {' AND '.join(wheres)}",
+            values,
+        )
+        return cur.rowcount == 1
+
+    async def claim_open_for_user(
+        self,
+        deal_id: int,
+        from_status: str,
+        user_id: int,
+        buyer_id: int | None = None,
+    ) -> bool:
+        placeholders = ",".join("?" * len(ACTIVE_DEALS))
+        stamp = now()
+        sets = ["status = ?", "updated_at = ?"]
+        values: list[Any] = [DEAL_OPEN, stamp]
+        if buyer_id is not None:
+            sets.append("buyer_id = ?")
+            values.append(buyer_id)
+        values.extend([deal_id, from_status, *ACTIVE_DEALS, user_id, user_id])
+        cur = await self.execute(
+            f"""
+            UPDATE deals
+            SET {", ".join(sets)}
+            WHERE id = ? AND status = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM deals AS other
+                WHERE other.id != deals.id
+                  AND other.status IN ({placeholders})
+                  AND (other.seller_id = ? OR other.buyer_id = ?)
+              )
+            """,
             values,
         )
         return cur.rowcount == 1

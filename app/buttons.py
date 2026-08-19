@@ -109,6 +109,7 @@ DEFAULT_STYLE = {
     "lang_en": "primary",
     "req_card": "primary",
     "req_phone": "primary",
+    "req_ton": "primary",
     "deal_cur_ton": "primary",
     "deal_cur_usdt": "success",
     "deposit_asset_ton": "primary",

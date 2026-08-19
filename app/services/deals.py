@@ -60,10 +60,12 @@ async def _unfreeze_buyer(db: Storage, deal) -> None:
     amount = float(deal["amount"] or 0)
     if amount <= 0 or not deal["buyer_id"]:
         return
-    try:
-        await db.unfreeze_asset(deal["buyer_id"], deal_asset(deal), amount)
-    except ValueError:
-        pass
+    await db.unfreeze_asset(deal["buyer_id"], deal_asset(deal), amount)
+
+
+async def _release_nft(db: Storage, deal) -> None:
+    if deal["nft_id"] and not deal["nft_sent"]:
+        await db.set_nft_status(deal["nft_id"], NFT_AVAILABLE, deal_id=None)
 
 
 async def _capture_and_pay(db: Storage, settings: Settings, deal) -> float:
@@ -75,6 +77,10 @@ async def _capture_and_pay(db: Storage, settings: Settings, deal) -> float:
         await db.credit_asset(deal["seller_id"], asset, payout)
     except Exception:
         await db.credit_asset(deal["buyer_id"], asset, amount)
+        try:
+            await db.freeze_asset(deal["buyer_id"], asset, amount)
+        except ValueError:
+            pass
         raise
     return payout
 
@@ -212,8 +218,10 @@ async def take_listing(db: Storage, deal_id: int, taker_id: int, nft_id: int = 0
     if nft and not deal["nft_id"]:
         raise DealError("deal_nft_need_item")
     await _need_buyer_funds(db, taker_id, deal)
-    fields = {"status": DEAL_OPEN, "buyer_id": taker_id}
-    if not await db.claim_deal(deal_id, DEAL_LISTED, **fields):
+    if not await db.claim_open_for_user(deal_id, DEAL_LISTED, taker_id, buyer_id=taker_id):
+        if await db.active_deal(taker_id):
+            active = await db.active_deal(taker_id)
+            raise DealError("deal_busy_you", id=active["id"])
         raise DealError("deal_listed_taken")
     deal = await db.get_deal(deal_id)
     try:
@@ -232,7 +240,11 @@ async def accept(db: Storage, deal_id: int, user_id: int) -> None:
     if is_nft_deal(deal) and not deal["nft_id"]:
         raise DealError("deal_nft_need_item")
     await _need_buyer_funds(db, deal["buyer_id"], deal)
-    if not await db.claim_deal(deal_id, DEAL_PENDING, status=DEAL_OPEN):
+    if not await db.claim_open_for_user(deal_id, DEAL_PENDING, deal["buyer_id"]):
+        if await db.active_deal(deal["buyer_id"]):
+            active = await db.active_deal(deal["buyer_id"])
+            if active and active["id"] != deal_id:
+                raise DealError("deal_busy_them")
         raise DealError("error")
     deal = await db.get_deal(deal_id)
     try:
@@ -250,6 +262,7 @@ async def decline(db: Storage, deal_id: int, user_id: int) -> None:
         raise DealError("error")
     if not await db.claim_deal(deal_id, DEAL_PENDING, status=DEAL_CANCELLED):
         raise DealError("error")
+    await _release_nft(db, deal)
 
 
 async def set_price(db: Storage, deal_id: int, user_id: int, amount: float) -> None:
@@ -301,6 +314,8 @@ async def complete(db: Storage, settings: Settings, deal_id: int, user_id: int) 
     deal = await db.get_deal(deal_id)
     if deal is None or deal["buyer_id"] != user_id or deal["status"] != DEAL_OPEN:
         raise DealError("error")
+    if is_nft_deal(deal) and not deal["nft_sent"]:
+        raise DealError("deal_nft_wait_send")
     if not await db.claim_deal(deal_id, DEAL_OPEN, status=DEAL_REVIEW):
         raise DealError("error")
     try:
@@ -329,19 +344,24 @@ async def cancel_mutual(db: Storage, deal_id: int, ton=None) -> None:
         raise DealError("error")
     if deal["status"] in {DEAL_DISPUTE, DEAL_REVIEW, DEAL_CLOSED}:
         raise DealError("deal_cancel_denied")
+    if deal["nft_sent"]:
+        raise DealError("deal_cancel_denied")
     if deal["status"] == DEAL_LISTED:
         if not await db.claim_deal(deal_id, DEAL_LISTED, status=DEAL_CANCELLED):
             raise DealError("error")
-        if deal["nft_id"] and not deal["nft_sent"]:
-            await db.set_nft_status(deal["nft_id"], NFT_AVAILABLE, deal_id=None)
+        await _release_nft(db, deal)
         return
     frozen = deal["status"] == DEAL_OPEN
-    if not await db.claim_deal(deal_id, deal["status"], status=DEAL_CANCELLED):
+    prev = deal["status"]
+    if not await db.claim_deal(deal_id, prev, status=DEAL_CANCELLED):
         raise DealError("error")
     if frozen:
-        await _unfreeze_buyer(db, deal)
-    if deal["nft_id"] and not deal["nft_sent"]:
-        await db.set_nft_status(deal["nft_id"], NFT_AVAILABLE, deal_id=None)
+        try:
+            await _unfreeze_buyer(db, deal)
+        except Exception:
+            await db.claim_deal(deal_id, DEAL_CANCELLED, status=prev)
+            raise DealError("error")
+    await _release_nft(db, deal)
 
 
 async def open_dispute(db: Storage, deal_id: int, user_id: int, reason: str = "") -> None:
@@ -368,7 +388,7 @@ async def open_dispute(db: Storage, deal_id: int, user_id: int, reason: str = ""
 async def _settle_nft(db: Storage, deal, to_buyer: bool) -> None:
     if not deal["nft_id"]:
         return
-    if deal["nft_sent"] and to_buyer:
+    if deal["nft_sent"]:
         await db.set_nft_status(
             deal["nft_id"],
             NFT_TRANSFERRED,
@@ -376,8 +396,9 @@ async def _settle_nft(db: Storage, deal, to_buyer: bool) -> None:
             deal_id=deal["id"],
         )
         return
-    if not deal["nft_sent"]:
-        await db.set_nft_status(deal["nft_id"], NFT_AVAILABLE, deal_id=None)
+    if to_buyer:
+        return
+    await db.set_nft_status(deal["nft_id"], NFT_AVAILABLE, deal_id=None)
 
 
 async def verdict_buyer(db: Storage, deal_id: int, ton=None) -> None:
