@@ -12,6 +12,7 @@ from app.handlers import admin, deals, inventory, profile, start
 from app.middlewares import ContextMiddleware, install
 from app.pyro import run
 from app.services.bank import BankAccount
+from app.services.deposits import DepositWatch
 from app.services.ton import TonEscrow
 from app.storage import Storage
 
@@ -33,6 +34,7 @@ async def main() -> None:
     settings.bot_username = me.username or ""
     bank = BankAccount(settings, db, bot)
     ton = TonEscrow(settings)
+    watch = DepositWatch(settings, db, bot)
     await ton.connect()
     dp = Dispatcher(
         storage=MemoryStorage(),
@@ -40,6 +42,7 @@ async def main() -> None:
         settings=settings,
         bank=bank,
         ton=ton,
+        watch=watch,
         lang="ru",
         theme=Theme({}),
     )
@@ -53,9 +56,11 @@ async def main() -> None:
 
     try:
         await bank.start()
+        await watch.start()
         log.info("polling")
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
+        await watch.stop()
         await bank.stop()
         await ton.close()
         await db.close()

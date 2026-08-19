@@ -184,7 +184,7 @@ class Storage:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 amount REAL NOT NULL,
-                comment TEXT NOT NULL UNIQUE,
+                comment TEXT NOT NULL,
                 asset TEXT NOT NULL DEFAULT 'USDT',
                 tx_hash TEXT,
                 status TEXT NOT NULL,
@@ -348,8 +348,41 @@ class Storage:
         await self.db.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_inv_slug ON inventory(slug) WHERE IFNULL(slug, '') != ''"
         )
+        await self._migrate_deposits()
+
+    async def _migrate_deposits(self) -> None:
+        await self.db.execute("DROP INDEX IF EXISTS idx_dep_comment")
+        row = await self.fetchone(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'deposits'"
+        )
+        sql = ""
+        if row is not None:
+            try:
+                sql = row["sql"] or ""
+            except (KeyError, IndexError, TypeError):
+                sql = row[0] or ""
+        compact = " ".join((sql or "").split()).lower()
+        if "comment text not null unique" in compact or "comment text unique" in compact:
+            await self.db.executescript(
+                """
+                CREATE TABLE deposits_mig (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    amount REAL NOT NULL,
+                    comment TEXT NOT NULL,
+                    asset TEXT NOT NULL DEFAULT 'USDT',
+                    tx_hash TEXT,
+                    status TEXT NOT NULL,
+                    created_at INTEGER NOT NULL
+                );
+                INSERT INTO deposits_mig (id, user_id, amount, comment, asset, tx_hash, status, created_at)
+                SELECT id, user_id, amount, comment, COALESCE(asset, 'USDT'), tx_hash, status, created_at FROM deposits;
+                DROP TABLE deposits;
+                ALTER TABLE deposits_mig RENAME TO deposits;
+                """
+            )
         await self.db.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_dep_comment ON deposits(comment) WHERE IFNULL(comment, '') != ''"
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_dep_tx ON deposits(tx_hash) WHERE IFNULL(tx_hash, '') != ''"
         )
 
     async def execute(self, sql: str, params: Iterable[Any] = ()) -> aiosqlite.Cursor:
@@ -948,8 +981,48 @@ class Storage:
         )
         return cur.lastrowid
 
+    async def record_deposit(
+        self,
+        user_id: int,
+        amount: float,
+        comment: str,
+        asset: str,
+        tx_hash: str,
+    ) -> Optional[int]:
+        tx = (tx_hash or "").strip()
+        if not tx:
+            return None
+        try:
+            cur = await self.execute(
+                """
+                INSERT INTO deposits (user_id, amount, comment, asset, status, tx_hash, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    _asset_round(asset, amount),
+                    comment,
+                    (asset or "USDT").upper(),
+                    WALLET_DONE,
+                    tx,
+                    now(),
+                ),
+            )
+        except aiosqlite.IntegrityError:
+            return None
+        return cur.lastrowid
+
     async def deposit_by_comment(self, comment: str) -> Optional[aiosqlite.Row]:
-        return await self.fetchone("SELECT * FROM deposits WHERE comment = ?", (comment,))
+        return await self.fetchone("SELECT * FROM deposits WHERE comment = ? ORDER BY id DESC LIMIT 1", (comment,))
+
+    async def pending_by_comment(self, comment: str) -> Optional[aiosqlite.Row]:
+        return await self.fetchone(
+            "SELECT * FROM deposits WHERE comment = ? AND status = ? ORDER BY id DESC LIMIT 1",
+            (comment, WALLET_PENDING),
+        )
+
+    async def deposit_by_tx(self, tx_hash: str) -> Optional[aiosqlite.Row]:
+        return await self.fetchone("SELECT * FROM deposits WHERE tx_hash = ?", (tx_hash,))
 
     async def get_deposit(self, deposit_id: int) -> Optional[aiosqlite.Row]:
         return await self.fetchone("SELECT * FROM deposits WHERE id = ?", (deposit_id,))
@@ -958,6 +1031,12 @@ class Storage:
         return await self.fetchall(
             "SELECT * FROM deposits WHERE status = ? ORDER BY id DESC",
             (WALLET_PENDING,),
+        )
+
+    async def recent_deposits(self, limit: int = 20) -> list[aiosqlite.Row]:
+        return await self.fetchall(
+            "SELECT * FROM deposits WHERE status = ? ORDER BY id DESC LIMIT ?",
+            (WALLET_DONE, limit),
         )
 
     async def finish_deposit(self, deposit_id: int, status: str, tx_hash: Optional[str] = None) -> None:

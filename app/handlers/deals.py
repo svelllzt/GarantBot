@@ -1015,8 +1015,10 @@ async def _thread_text(db: Storage, deal_id: int, lang: str) -> str:
     return "\n\n".join(chunks)[:3500]
 
 
-async def _push_dispute(bot, db: Storage, settings: Settings, deal, sender_id: int, text: str, file_id: str | None = None) -> None:
-    targets = {deal["seller_id"], deal["buyer_id"], *settings.admins}
+async def _push_dispute(bot, db: Storage, settings: Settings, deal, sender_id: int, text: str, file_id: str | None = None, *, to_admins: bool = True) -> None:
+    targets = {deal["seller_id"], deal["buyer_id"]}
+    if to_admins:
+        targets.update(settings.admins)
     targets.discard(sender_id)
     targets.discard(0)
     for uid in targets:
@@ -1077,18 +1079,27 @@ async def dispute_reason(message: Message, state: FSMContext, db: Storage, lang:
     await _show_deal(message.bot, db, deal, message.from_user.id, lang, settings, theme, message=message)
 
 
-@router.callback_query(DealCB.filter(F.a == "disev"))
-async def dispute_evidence_start(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings):
+@router.callback_query(DealCB.filter(F.a.in_({"photo", "disev"})))
+async def deal_photo_start(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings):
     deal = await db.get_deal(callback_data.i)
-    if deal is None or deal["status"] != DEAL_DISPUTE:
+    if deal is None:
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    if call.from_user.id not in (deal["seller_id"], deal["buyer_id"]) and not settings.is_admin(call.from_user.id):
+    party = call.from_user.id in (deal["seller_id"], deal["buyer_id"])
+    admin = settings.is_admin(call.from_user.id)
+    if deal["status"] == DEAL_OPEN and not party:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    if deal["status"] == DEAL_DISPUTE and not party and not admin:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    if deal["status"] not in {DEAL_OPEN, DEAL_DISPUTE}:
         await call.answer(t(lang, "error"), show_alert=True)
         return
     await state.set_state(DealFlow.dispute_evidence)
     await state.update_data(deal_id=deal["id"])
-    await call.message.answer(t(lang, "deal_dispute_evidence_ask"), reply_markup=evidence_kb(lang, theme, deal["id"]))
+    ask = t(lang, "deal_dispute_evidence_ask") if deal["status"] == DEAL_DISPUTE else t(lang, "deal_photo_ask")
+    await call.message.answer(ask, reply_markup=evidence_kb(lang, theme, deal["id"]))
     await call.answer()
 
 
@@ -1114,7 +1125,7 @@ async def dispute_evidence(message: Message, state: FSMContext, db: Storage, lan
     data = await state.get_data()
     deal_id = int(data.get("deal_id") or 0)
     deal = await db.get_deal(deal_id)
-    if deal is None or deal["status"] != DEAL_DISPUTE:
+    if deal is None or deal["status"] not in {DEAL_OPEN, DEAL_DISPUTE}:
         await state.clear()
         await message.answer(t(lang, "error"))
         return
@@ -1130,9 +1141,15 @@ async def dispute_evidence(message: Message, state: FSMContext, db: Storage, lan
     is_admin = settings.is_admin(message.from_user.id)
     await db.add_dispute_msg(deal_id, message.from_user.id, caption or None, file_id, is_admin=is_admin)
     who = username_of(await db.get_user(message.from_user.id))
-    note = t(lang, "deal_dispute_new", id=deal_id, who=who, text=h(caption) if caption else t(lang, "deal_dispute_photo"))
-    await _push_dispute(message.bot, db, settings, deal, message.from_user.id, note, file_id)
-    await message.answer(t(lang, "deal_dispute_ok"), reply_markup=evidence_kb(lang, theme, deal_id))
+    if deal["status"] == DEAL_DISPUTE:
+        note = t(lang, "deal_dispute_new", id=deal_id, who=who, text=h(caption) if caption else t(lang, "deal_dispute_photo"))
+        await _push_dispute(message.bot, db, settings, deal, message.from_user.id, note, file_id, to_admins=True)
+    else:
+        note = t(lang, "deal_photo_peer", id=deal_id, who=who)
+        if caption:
+            note = note + "\n" + h(caption)
+        await _push_dispute(message.bot, db, settings, deal, message.from_user.id, note, file_id, to_admins=False)
+    await message.answer(t(lang, "deal_photo_ok"), reply_markup=evidence_kb(lang, theme, deal_id))
 
 
 @router.callback_query(DealCB.filter(F.a == "disth"))

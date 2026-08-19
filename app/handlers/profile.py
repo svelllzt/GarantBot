@@ -1,5 +1,3 @@
-import secrets
-
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -7,10 +5,10 @@ from aiogram.types import CallbackQuery, Message
 from app.buttons import Theme
 from app.config import Settings
 from app.i18n import t
-from app.keyboards import NavCB, WalletCB, asset_pick_kb, cancel_kb, deposit_kb, lang_kb, requisites_kb
-from app.services.ton import incoming_by_comment, incoming_usdt_by_comment
+from app.keyboards import NavCB, WalletCB, cancel_kb, deposit_kb, lang_kb, requisites_kb
+from app.services.deposits import DepositWatch, user_memo
 from app.states import Requisites, Wallet
-from app.storage import WALLET_DONE, WALLET_PENDING, Storage
+from app.storage import Storage
 from app.util import is_cancel, money_asset, paint, parse_amount, parse_ton, valid_ton
 
 router = Router()
@@ -65,110 +63,53 @@ async def save_ton(message: Message, state: FSMContext, db: Storage, lang: str, 
 
 
 @router.callback_query(NavCB.filter(F.a == "dep"))
-async def pick_deposit_asset(call: CallbackQuery, state: FSMContext, lang: str, theme: Theme, settings: Settings):
+async def show_deposit(call: CallbackQuery, state: FSMContext, lang: str, theme: Theme, settings: Settings):
     await state.clear()
-    await paint(call, t(lang, "deposit_pick"), asset_pick_kb(lang, theme, "dasset"), screen="profile", settings=settings)
-
-
-@router.callback_query(WalletCB.filter(F.a == "dasset"))
-async def ask_deposit(call: CallbackQuery, callback_data: WalletCB, state: FSMContext, lang: str, settings: Settings, theme: Theme):
-    asset = "TON" if callback_data.m == "TON" else "USDT"
-    await state.update_data(asset=asset)
-    await state.set_state(Wallet.deposit_amount)
-    await call.message.answer(
-        t(lang, "deposit_ask", currency=asset, min=money_asset(_min_dep(settings, asset), asset)),
-        reply_markup=cancel_kb(lang, theme),
-    )
-    await call.answer()
-
-
-@router.message(Wallet.deposit_amount)
-async def make_deposit(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
-    if is_cancel(message.text or ""):
-        return
-    data = await state.get_data()
-    asset = "TON" if data.get("asset") == "TON" else "USDT"
-    amount = _parse(message.text or "", asset)
-    minimum = _min_dep(settings, asset)
-    if amount is None or amount < minimum:
-        await message.answer(t(lang, "min_amount", min=money_asset(minimum, asset), currency=asset))
-        return
-    comment = ""
-    deposit_id = None
-    for _ in range(8):
-        comment = f"G{message.from_user.id}{secrets.randbelow(9000) + 1000}"
-        try:
-            deposit_id = await db.create_deposit(message.from_user.id, amount, comment, asset)
-            break
-        except Exception:
-            deposit_id = None
-    if not deposit_id:
-        await message.answer(t(lang, "error"))
-        return
-    extra = (
-        t(lang, "deposit_usdt_net" if asset == "USDT" else "deposit_ton", address=settings.ton_address)
-        if settings.ton_address
-        else t(lang, "deposit_manual", support=settings.support_username.lstrip("@"))
-    )
-    await state.clear()
-    await message.answer(
+    comment = user_memo(call.from_user.id)
+    if settings.ton_address:
+        extra = t(
+            lang,
+            "deposit_auto_extra",
+            address=settings.ton_address,
+        )
+    else:
+        extra = t(lang, "deposit_manual", support=settings.support_username.lstrip("@"))
+    await paint(
+        call,
         t(
             lang,
-            "deposit_created",
-            id=deposit_id,
-            amount=money_asset(amount, asset),
-            currency=asset,
+            "deposit_auto",
             comment=comment,
             extra=extra,
+            min_usdt=money_asset(_min_dep(settings, "USDT"), "USDT"),
+            min_ton=money_asset(_min_dep(settings, "TON"), "TON"),
         ),
-        reply_markup=deposit_kb(lang, theme, deposit_id),
+        deposit_kb(lang, theme),
+        screen="deposit",
+        settings=settings,
     )
 
 
 @router.callback_query(WalletCB.filter(F.a == "chk"))
-async def check_deposit(call: CallbackQuery, callback_data: WalletCB, db: Storage, lang: str, settings: Settings, theme: Theme):
-    deposit = await db.get_deposit(callback_data.i)
-    if deposit is None or deposit["user_id"] != call.from_user.id:
+async def check_deposit(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme, watch: DepositWatch | None = None):
+    if watch is None:
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    asset = "USDT"
-    try:
-        asset = (deposit["asset"] or "USDT").upper()
-    except (KeyError, IndexError, TypeError):
-        asset = "USDT"
-    if asset != "TON":
-        asset = "USDT"
-    if deposit["status"] == WALLET_DONE:
-        await call.answer(
-            t(lang, "deposit_ok", amount=money_asset(deposit["amount"], asset), currency=asset),
-            show_alert=True,
-        )
-        return
-    if deposit["status"] != WALLET_PENDING:
-        await call.answer(t(lang, "error"), show_alert=True)
-        return
-    need = float(deposit["amount"])
-    if asset == "TON":
-        got = await incoming_by_comment(settings, deposit["comment"])
-    else:
-        got = await incoming_usdt_by_comment(settings, deposit["comment"])
-    if got is None or got + 1e-9 < need:
+    credited = await watch.apply(call.from_user.id)
+    if not credited:
         await call.answer(t(lang, "deposit_wait"), show_alert=True)
         return
-    if not await db.claim_deposit(deposit["id"], WALLET_DONE):
-        await call.answer(t(lang, "error"), show_alert=True)
-        return
-    try:
-        await db.credit_asset(call.from_user.id, asset, got)
-    except Exception:
-        await db.finish_deposit(deposit["id"], WALLET_PENDING)
-        await call.answer(t(lang, "error"), show_alert=True)
-        return
+    parts = []
+    totals: dict[str, float] = {}
+    for asset, amount in credited:
+        totals[asset] = totals.get(asset, 0) + amount
+    for asset, amount in totals.items():
+        parts.append(t(lang, "deposit_ok", amount=money_asset(amount, asset), currency=asset))
     from app.keyboards import home_kb
 
     await paint(
         call,
-        t(lang, "deposit_ok", amount=money_asset(got, asset), currency=asset),
+        "\n".join(parts),
         await home_kb(db, call.from_user.id, lang, theme),
         screen="menu",
         settings=settings,

@@ -63,16 +63,25 @@ RU = {
     "change_lang": "Язык",
     "deposit_ask": "⬇️ Сумма пополнения в <b>{currency}</b>. Минимум <b>{min}</b>.",
     "deposit_created": (
-        "⬇️ <b>Заявка #{id}</b>\n\n"
-        "💰 Сумма: <b>{amount} {currency}</b>\n"
+        "⬇️ <b>Пополнение</b>\n\n"
         "🔖 Комментарий: <code>{comment}</code>\n\n"
-        "{extra}\n\n"
-        "После перевода нажмите «Проверить» или дождитесь администратора."
+        "{extra}"
     ),
+    "deposit_auto": (
+        "⬇️ <b>Пополнение</b>\n\n"
+        "🔖 Комментарий / memo — укажите его в переводе как есть:\n"
+        "<code>{comment}</code>\n\n"
+        "{extra}\n\n"
+        "• TON — обычный перевод в сети TON\n"
+        "• USDT — jetton USDT в сети TON, не TRC-20\n\n"
+        "Минимум: <b>{min_usdt} USDT</b> / <b>{min_ton} TON</b>\n\n"
+        "Зачисление автоматическое. «Проверить» — если нужно сразу."
+    ),
+    "deposit_auto_extra": "Адрес гаранта:\n<code>{address}</code>",
     "deposit_ton": "Переведите на TON-адрес:\n<code>{address}</code>\nВ комментарии укажите код выше.",
-    "deposit_manual": "Перевод подтверждает администратор. Напишите @{support}, если платёж уже ушёл.",
+    "deposit_manual": "Адрес эскроу не задан. Напишите @{support}.",
     "deposit_check": "Проверить",
-    "deposit_wait": "⏳ Платёж ещё не найден.",
+    "deposit_wait": "⏳ Платёж ещё не найден. Проверьте memo и подождите подтверждение сети.",
     "deposit_ok": "✅ Баланс пополнен на <b>{amount} {currency}</b>.",
     "withdraw_ask": "⬆️ Сумма вывода в <b>{currency}</b>. Минимум <b>{min}</b>. Комиссия на вывод не берётся.",
     "withdraw_method": "⬆️ <b>Куда вывести?</b>",
@@ -83,7 +92,7 @@ RU = {
     "about": (
         "ℹ️ <b>Phantom OTC</b>\n\n"
         "Безопасные сделки в TON и USDT: аккаунты, NFT-подарки, товар.\n\n"
-        "• Пополнение TON или USDT через сеть TON. Монеты хранятся в боте\n"
+        "• Пополнение TON или USDT через сеть TON — зачисляется само по memo\n"
         "• Когда сделка стартует, сумма замораживается и вывести её нельзя\n"
         "• Покупатель подтверждает получение — продавец получает монеты минус комиссия\n"
         "• Любая сторона может открыть спор, решение принимает администратор\n\n"
@@ -324,8 +333,9 @@ RU = {
     "admin_seller": "Продавец прав",
     "admin_verdict_buyer": "Вердикт: деньги возвращены покупателю.",
     "admin_verdict_seller": "Вердикт: деньги переведены продавцу.",
-    "admin_empty_list": "Заявок нет.",
+    "admin_empty_list": "Пока пусто.",
     "admin_dep_line": "#{id} · {amount} {currency} · {comment}\nID {user}",
+    "admin_deposits_log": "Последние автоматические пополнения:",
     "admin_wd_line": "#{id} · {amount} {currency} · {method}\n{details}\nID {user}",
     "admin_confirm": "Подтвердить",
     "admin_reject": "Отклонить",
@@ -470,6 +480,10 @@ RU = {
     "deal_dispute_evidence_ask": "Пришлите текст или фото. Когда закончите — нажмите «Готово».",
     "deal_dispute_thread": "Переписка",
     "deal_dispute_evidence": "Доказательства",
+    "deal_photo": "Фото",
+    "deal_photo_ask": "Пришлите фото по сделке. Можно несколько подряд. Когда закончите — «Готово».",
+    "deal_photo_ok": "Фото отправлено.",
+    "deal_photo_peer": "📷 Фото по сделке #{id} от {who}",
     "deal_dispute_done": "Готово",
     "deal_dispute_empty": "Сообщений пока нет.",
     "deal_dispute_msg": "<b>{who}</b>\n{text}",
@@ -491,10 +505,21 @@ RU = {
     "admin_faq_ask_photo": "Пришлите фото для статьи или «-», чтобы без картинки.",
     "admin_faq_saved": "Статья сохранена.",
     "admin_faq_deleted": "Статья удалена.",
-    "admin_screens_pick": "Экран, для которого поставить картинку. Дальше пришлите фото. «-» снимет картинку.",
-    "admin_screen_ask": "Фото для экрана {key}. «-» удаляет.",
-    "admin_screen_saved": "Картинка для {key} сохранена.",
-    "admin_screen_cleared": "Картинка {key} снята.",
+    "admin_screens_pick": "Выберите экран и пришлите фото. «-» снимет картинку.",
+    "admin_screen_ask": "Фото для экрана «{key}». «-» удаляет.",
+    "admin_screen_saved": "Картинка для «{key}» сохранена.",
+    "admin_screen_cleared": "Картинка «{key}» снята.",
+    "admin_screen_name_menu": "Меню",
+    "admin_screen_name_profile": "Профиль",
+    "admin_screen_name_deal": "Сделка",
+    "admin_screen_name_faq": "F.A.Q",
+    "admin_screen_name_support": "Поддержка",
+    "admin_screen_name_inventory": "Инвентарь",
+    "admin_screen_name_about": "О сервисе",
+    "admin_screen_name_history": "История",
+    "admin_screen_name_requisites": "Реквизиты",
+    "admin_screen_name_deposit": "Пополнение",
+    "admin_screen_name_listing": "Объявление",
     "admin_bans_empty": "Заблокированных нет. Нажмите на человека в списке, чтобы разбанить.",
     "admin_bans_line": "{name}\nID <code>{id}</code>\n{reason}",
     "admin_ask_ban": "ID или @username. Потом причина бана.",
@@ -642,16 +667,25 @@ EN = {
     "change_lang": "Language",
     "deposit_ask": "⬇️ Deposit amount in <b>{currency}</b>. Minimum <b>{min}</b>.",
     "deposit_created": (
-        "⬇️ <b>Request #{id}</b>\n\n"
-        "💰 Amount: <b>{amount} {currency}</b>\n"
+        "⬇️ <b>Deposit</b>\n\n"
         "🔖 Memo: <code>{comment}</code>\n\n"
-        "{extra}\n\n"
-        "After sending, tap Check or wait for an admin."
+        "{extra}"
     ),
+    "deposit_auto": (
+        "⬇️ <b>Deposit</b>\n\n"
+        "🔖 Comment / memo — put it on the transfer exactly as written:\n"
+        "<code>{comment}</code>\n\n"
+        "{extra}\n\n"
+        "• TON — a regular TON transfer\n"
+        "• USDT — USDT jetton on TON, not TRC-20\n\n"
+        "Minimum: <b>{min_usdt} USDT</b> / <b>{min_ton} TON</b>\n\n"
+        "Credit is automatic. Tap Check if you want it right away."
+    ),
+    "deposit_auto_extra": "Escrow address:\n<code>{address}</code>",
     "deposit_ton": "Send TON to:\n<code>{address}</code>\nUse the memo above as the comment.",
-    "deposit_manual": "An admin confirms the transfer. Message @{support} if it is already sent.",
+    "deposit_manual": "Escrow address is not set. Message @{support}.",
     "deposit_check": "Check",
-    "deposit_wait": "⏳ Payment not found yet.",
+    "deposit_wait": "⏳ Payment not found yet. Check the memo and wait for network confirmation.",
     "deposit_ok": "✅ Balance credited with <b>{amount} {currency}</b>.",
     "withdraw_ask": "⬆️ Withdrawal amount in <b>{currency}</b>. Minimum <b>{min}</b>. No extra fee on payout.",
     "withdraw_method": "⬆️ <b>Where should we send it?</b>",
@@ -662,7 +696,7 @@ EN = {
     "about": (
         "ℹ️ <b>Phantom OTC</b>\n\n"
         "Safe P2P deals in TON and USDT: accounts, NFT gifts, goods.\n\n"
-        "• Deposit TON or USDT via the TON network. Funds live in the bot\n"
+        "• Deposit TON or USDT via the TON network — credited automatically by memo\n"
         "• When a deal starts the amount is frozen and cannot be withdrawn\n"
         "• The buyer confirms receipt — the seller is paid minus the fee\n"
         "• Either side can open a dispute; an admin decides\n\n"
@@ -903,8 +937,9 @@ EN = {
     "admin_seller": "Seller wins",
     "admin_verdict_buyer": "Verdict: funds returned to the buyer.",
     "admin_verdict_seller": "Verdict: funds released to the seller.",
-    "admin_empty_list": "No requests.",
+    "admin_empty_list": "Nothing here yet.",
     "admin_dep_line": "#{id} · {amount} {currency} · {comment}\nID {user}",
+    "admin_deposits_log": "Latest automatic deposits:",
     "admin_wd_line": "#{id} · {amount} {currency} · {method}\n{details}\nID {user}",
     "admin_confirm": "Confirm",
     "admin_reject": "Reject",
@@ -1034,6 +1069,10 @@ EN = {
     "deal_dispute_evidence_ask": "Send text or a photo. Tap Done when you are finished.",
     "deal_dispute_thread": "Thread",
     "deal_dispute_evidence": "Evidence",
+    "deal_photo": "Photo",
+    "deal_photo_ask": "Send photos for this deal. You can send several. Tap Done when finished.",
+    "deal_photo_ok": "Photo sent.",
+    "deal_photo_peer": "📷 Photo on deal #{id} from {who}",
     "deal_dispute_done": "Done",
     "deal_dispute_empty": "No messages yet.",
     "deal_dispute_msg": "<b>{who}</b>\n{text}",
@@ -1055,10 +1094,21 @@ EN = {
     "admin_faq_ask_photo": "Send a photo for the article, or “-” for none.",
     "admin_faq_saved": "Article saved.",
     "admin_faq_deleted": "Article deleted.",
-    "admin_screens_pick": "Pick a screen, then send a photo. “-” removes it.",
-    "admin_screen_ask": "Photo for screen {key}. “-” removes it.",
-    "admin_screen_saved": "Photo for {key} saved.",
-    "admin_screen_cleared": "Photo for {key} removed.",
+    "admin_screens_pick": "Pick a screen and send a photo. “-” removes it.",
+    "admin_screen_ask": "Photo for “{key}”. “-” removes it.",
+    "admin_screen_saved": "Photo for “{key}” saved.",
+    "admin_screen_cleared": "Photo for “{key}” removed.",
+    "admin_screen_name_menu": "Menu",
+    "admin_screen_name_profile": "Profile",
+    "admin_screen_name_deal": "Deal",
+    "admin_screen_name_faq": "F.A.Q",
+    "admin_screen_name_support": "Support",
+    "admin_screen_name_inventory": "Inventory",
+    "admin_screen_name_about": "About",
+    "admin_screen_name_history": "History",
+    "admin_screen_name_requisites": "Payout address",
+    "admin_screen_name_deposit": "Deposit",
+    "admin_screen_name_listing": "Listing",
     "admin_bans_empty": "Nobody is banned. Tap a user in the list to unban.",
     "admin_bans_line": "{name}\nID <code>{id}</code>\n{reason}",
     "admin_ask_ban": "ID or @username, then a ban reason.",

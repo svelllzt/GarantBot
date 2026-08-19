@@ -512,13 +512,14 @@ async def win_seller(call: CallbackQuery, callback_data: AdminCB, db: Storage, l
 async def deposits(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme):
     if await _deny(call, lang, settings):
         return
-    rows = await db.pending_deposits()
+    rows = await db.recent_deposits(15)
     if not rows:
         await call.answer(t(lang, "admin_empty_list"), show_alert=True)
         return
+    lines = [t(lang, "admin_deposits_log"), ""]
     for row in rows:
         asset = _ticket_asset(row)
-        await call.message.answer(
+        lines.append(
             t(
                 lang,
                 "admin_dep_line",
@@ -527,10 +528,9 @@ async def deposits(call: CallbackQuery, db: Storage, lang: str, settings: Settin
                 currency=asset,
                 comment=row["comment"],
                 user=row["user_id"],
-            ),
-            reply_markup=ticket_kb("dep", row["id"], lang, theme),
+            )
         )
-    await call.answer()
+    await paint(call, "\n".join(lines), admin_kb(lang, theme), settings=settings)
 
 
 @router.callback_query(AdminCB.filter(F.a == "wds"))
@@ -1219,7 +1219,7 @@ async def screens_admin(call: CallbackQuery, db: Storage, lang: str, settings: S
     lines = [t(lang, "admin_screens_pick"), ""]
     for key in SCREENS:
         mark = "✓" if mapping.get(key) else "—"
-        lines.append(f"{mark} {key}")
+        lines.append(f"{mark} {t(lang, f'admin_screen_name_{key}')}")
     await paint(call, "\n".join(lines), screens_admin_kb(lang, theme), settings=settings)
 
 
@@ -1233,7 +1233,8 @@ async def screen_ask(call: CallbackQuery, callback_data: AdminCB, state: FSMCont
         return
     await state.set_state(AdminFlow.screen_photo)
     await state.update_data(screen_key=key)
-    await call.message.answer(t(lang, "admin_screen_ask", key=key), reply_markup=cancel_kb(lang, theme))
+    title = t(lang, f"admin_screen_name_{key}")
+    await call.message.answer(t(lang, "admin_screen_ask", key=title), reply_markup=cancel_kb(lang, theme))
     await call.answer()
 
 
@@ -1252,14 +1253,14 @@ async def screen_save(message: Message, state: FSMContext, db: Storage, lang: st
     if raw in {"-", "—"}:
         await db.clear_screen(key)
         await state.clear()
-        await message.answer(t(lang, "admin_screen_cleared", key=key))
+        await message.answer(t(lang, "admin_screen_cleared", key=t(lang, f"admin_screen_name_{key}")))
         return
     if not message.photo:
         await message.answer(t(lang, "req_bad"))
         return
     await db.set_screen(key, message.photo[-1].file_id)
     await state.clear()
-    await message.answer(t(lang, "admin_screen_saved", key=key))
+    await message.answer(t(lang, "admin_screen_saved", key=t(lang, f"admin_screen_name_{key}")))
 
 
 @router.callback_query(AdminCB.filter(F.a == "disr"))

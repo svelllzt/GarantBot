@@ -165,11 +165,18 @@ async def main() -> None:
         dep = await db.create_deposit(2, 5, "G2test1", asset="USDT")
         assert await db.claim_deposit(dep, "done")
         assert not await db.claim_deposit(dep, "done")
-        try:
-            await db.create_deposit(2, 1, "G2test1", asset="USDT")
-            raise AssertionError("duplicate deposit comment must fail")
-        except Exception:
-            pass
+        extra_dep = await db.create_deposit(2, 1, "G2test1", asset="USDT")
+        assert extra_dep
+        rec = await db.record_deposit(2, 3, "G2", "USDT", "tx-auto-1")
+        assert rec
+        assert await db.record_deposit(2, 1, "G2", "USDT", "tx-auto-1") is None
+        rec2 = await db.record_deposit(2, 1, "G2", "USDT", "tx-auto-2")
+        assert rec2
+        from app.services.deposits import memo_user_id, user_memo
+        assert user_memo(2) == "G2"
+        assert memo_user_id("G2") == 2
+        assert memo_user_id("pay G8296379573 now") == 8296379573
+        assert memo_user_id("hello") is None
         other = await db.add_nft(1, gift_id="g2", slug="slug", title="Dup", num=1, msg_id=99, from_user_id=1, is_unique=True)
         assert other is None
         nft_b = await db.add_nft(1, gift_id="g3", slug="other", title="B", num=2, msg_id=100, from_user_id=1, is_unique=True)
@@ -178,7 +185,7 @@ async def main() -> None:
         assert not await db.claim_nft(nft_b, NFT_AVAILABLE, NFT_LOCKED, deal_id=paid)
         exclusive = await db.create_deal(1, 2, exclusive=True)
         assert exclusive is None
-        from app.keyboards import CatCB, NavCB, main_menu
+        from app.keyboards import CatCB, NavCB, main_menu, screens_admin_kb
         packed = CatCB(k="acc", g=1).pack()
         assert ":" not in CatCB(k="acc", g=1).k
         assert packed.startswith("cat:")
@@ -189,6 +196,9 @@ async def main() -> None:
         user_cbs = [btn.callback_data or "" for row in main_menu("ru", theme, admin=False).inline_keyboard for btn in row]
         assert NavCB(a="admin").pack() in admin_cbs
         assert NavCB(a="admin").pack() not in user_cbs
+        scr_txt = [btn.text for row in screens_admin_kb("ru", theme).inline_keyboard for btn in row]
+        assert "Меню" in scr_txt and "Профиль" in scr_txt and "Пополнение" in scr_txt
+        assert "menu" not in scr_txt
 
         from app.services import deals as dsvc
         from app.services.deals import DealError as DealErr
@@ -287,6 +297,8 @@ async def main() -> None:
         buyer_cb = [btn.callback_data or "" for row in buyer_kb.inline_keyboard for btn in row]
         assert any(cb.startswith("deal:ok") for cb in buyer_cb)
         assert any(cb.startswith("deal:dis") for cb in buyer_cb)
+        assert any(cb.startswith("deal:photo") for cb in buyer_cb)
+        assert any(cb.startswith("deal:photo") for cb in seller_cb)
         assert not any(cb.startswith("deal:pdf") for cb in buyer_cb)
         assert not any(cb.startswith("deal:pay") for cb in buyer_cb)
         try:

@@ -1,17 +1,17 @@
-Put images here, or send them from /admin → Картинки меню.
+Картинки экранов. Можно кинуть файлы сюда или из /admin → Картинки меню.
 
-Default banners are already here (jpg). Names:
+Имена файлов (как в админке, по-русски те же экраны):
 
-  menu.jpg         main menu
-  profile.jpg      profile
-  deal.jpg         deal card
-  listing.jpg      public listing
-  inventory.jpg    NFT inventory
-  about.jpg        about
-  history.jpg      history
-  requisites.jpg   payout details
-  deposit.jpg      deposit
+  menu.jpg         Меню
+  profile.jpg      Профиль
+  deal.jpg         Сделка
+  listing.jpg      Объявление
+  inventory.jpg    Инвентарь
+  about.jpg        О сервисе
+  history.jpg      История
+  requisites.jpg   Реквизиты
+  deposit.jpg      Пополнение
   faq.jpg          F.A.Q
-  support.jpg      support
+  support.jpg      Поддержка
 
-Admin photos in the bot override these files.
+Фото, загруженные в боте, важнее файла на диске.
