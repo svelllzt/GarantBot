@@ -140,6 +140,12 @@ async def open_offer(
             await attach_nft(db, deal_id, seller_id, nft_id)
         except DealError:
             await db.claim_deal(deal_id, DEAL_PENDING, status=DEAL_CANCELLED)
+            deal = await db.get_deal(deal_id)
+            if deal:
+                await _release_nft(db, deal)
+            locked = await db.get_nft(nft_id)
+            if locked is not None and locked["status"] == NFT_LOCKED and locked["deal_id"] == deal_id:
+                await db.set_nft_status(nft_id, NFT_AVAILABLE, deal_id=None)
             raise
     return deal_id
 
@@ -196,6 +202,12 @@ async def create_listing(
             await attach_nft(db, deal_id, actor_id, nft_id)
         except DealError:
             await db.claim_deal(deal_id, DEAL_LISTED, status=DEAL_CANCELLED)
+            deal = await db.get_deal(deal_id)
+            if deal:
+                await _release_nft(db, deal)
+            locked = await db.get_nft(nft_id)
+            if locked is not None and locked["status"] == NFT_LOCKED and locked["deal_id"] == deal_id:
+                await db.set_nft_status(nft_id, NFT_AVAILABLE, deal_id=None)
             raise
     return deal_id
 
@@ -235,7 +247,7 @@ async def accept(db: Storage, deal_id: int, user_id: int) -> None:
     deal = await db.get_deal(deal_id)
     if deal is None or deal["status"] != DEAL_PENDING:
         raise DealError("error")
-    if user_id not in (deal["seller_id"], deal["buyer_id"]):
+    if user_id != deal["buyer_id"]:
         raise DealError("error")
     if is_nft_deal(deal) and not deal["nft_id"]:
         raise DealError("deal_nft_need_item")
@@ -293,6 +305,8 @@ async def attach_nft(db: Storage, deal_id: int, user_id: int, nft_id: int) -> st
     if not is_nft_deal(deal):
         raise DealError("error")
     if deal["status"] not in {DEAL_OPEN, DEAL_LISTED, DEAL_PENDING}:
+        raise DealError("error")
+    if deal["nft_sent"]:
         raise DealError("error")
     if nft["owner_id"] != user_id:
         raise DealError("error")

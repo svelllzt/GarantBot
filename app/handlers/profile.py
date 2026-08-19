@@ -93,8 +93,18 @@ async def make_deposit(message: Message, state: FSMContext, db: Storage, lang: s
     if amount is None or amount < minimum:
         await message.answer(t(lang, "min_amount", min=money_asset(minimum, asset), currency=asset))
         return
-    comment = f"G{message.from_user.id}{secrets.randbelow(9000) + 1000}"
-    deposit_id = await db.create_deposit(message.from_user.id, amount, comment, asset)
+    comment = ""
+    deposit_id = None
+    for _ in range(8):
+        comment = f"G{message.from_user.id}{secrets.randbelow(9000) + 1000}"
+        try:
+            deposit_id = await db.create_deposit(message.from_user.id, amount, comment, asset)
+            break
+        except Exception:
+            deposit_id = None
+    if not deposit_id:
+        await message.answer(t(lang, "error"))
+        return
     extra = (
         t(lang, "deposit_usdt_net" if asset == "USDT" else "deposit_ton", address=settings.ton_address)
         if settings.ton_address
@@ -148,7 +158,12 @@ async def check_deposit(call: CallbackQuery, callback_data: WalletCB, db: Storag
     if not await db.claim_deposit(deposit["id"], WALLET_DONE):
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    await db.credit_asset(call.from_user.id, asset, got)
+    try:
+        await db.credit_asset(call.from_user.id, asset, got)
+    except Exception:
+        await db.finish_deposit(deposit["id"], WALLET_PENDING)
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     from app.keyboards import home_kb
 
     await paint(

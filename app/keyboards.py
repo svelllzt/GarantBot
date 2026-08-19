@@ -230,7 +230,8 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int, seller_row=None) -> Inl
     nft = is_nft_deal(deal)
     if status == DEAL_PENDING and is_seller:
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
-    if status == DEAL_PENDING and not is_seller:
+    if status == DEAL_PENDING and user_id == deal["buyer_id"]:
+        theme.add(kb, "deal_accept", lang, callback_data=DealCB(a="acc", i=deal["id"]).pack())
         theme.add(kb, "deal_decline", lang, callback_data=DealCB(a="dec", i=deal["id"]).pack())
     if status == DEAL_LISTED and user_id == owner:
         theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())

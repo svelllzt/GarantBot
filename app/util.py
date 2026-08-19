@@ -210,7 +210,7 @@ def profile_text(user, lang: str, currency: str, db=None) -> str:
     )
 
 
-async def render_deal(db, deal, lang: str, currency: str, escrow: str = "") -> str:
+async def render_deal(db, deal, lang: str, currency: str, escrow: str = "", viewer_id: int = 0, reveal_secret: bool = False) -> str:
     from app.catalog import label as cat_label
 
     buyer = await db.get_user(deal["buyer_id"]) if deal["buyer_id"] else None
@@ -226,7 +226,12 @@ async def render_deal(db, deal, lang: str, currency: str, escrow: str = "") -> s
         secret_raw = (deal["secret"] or "").strip()
     except (KeyError, IndexError, TypeError):
         secret_raw = ""
-    if live and secret_raw:
+    party = False
+    try:
+        party = int(viewer_id or 0) in (int(deal["seller_id"] or 0), int(deal["buyer_id"] or 0))
+    except (TypeError, ValueError):
+        party = False
+    if live and secret_raw and (party or reveal_secret):
         secret = h(secret_raw)
     elif secret_raw:
         secret = t(lang, "deal_secret_hidden")

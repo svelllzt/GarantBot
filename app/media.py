@@ -62,6 +62,12 @@ async def paint(event: Message | CallbackQuery, text: str, markup=None, screen: 
     file = _media(screen, settings, text)
     if isinstance(event, CallbackQuery):
         msg = event.message
+        if msg is None:
+            try:
+                await event.answer()
+            except TelegramBadRequest:
+                pass
+            return
         if file is not None:
             if msg.photo:
                 try:

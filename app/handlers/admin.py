@@ -33,7 +33,7 @@ from app.services.bank import BankAccount
 from app.services import deals as svc
 from app.services.deals import DealError
 from app.states import AdminFlow
-from app.storage import WALLET_DONE, WALLET_REJECTED, Storage
+from app.storage import WALLET_DONE, WALLET_PENDING, WALLET_REJECTED, Storage
 from app.util import ban_notice, deal_asset, extract_emoji_id, is_cancel, money, money_asset, parse_amount, parse_ton, paint
 
 router = Router()
@@ -566,7 +566,12 @@ async def dep_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang:
         asset = "USDT"
     if asset != "TON":
         asset = "USDT"
-    await db.credit_asset(deposit["user_id"], asset, float(deposit["amount"]))
+    try:
+        await db.credit_asset(deposit["user_id"], asset, float(deposit["amount"]))
+    except Exception:
+        await db.finish_deposit(deposit["id"], WALLET_PENDING)
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     await paint(call, t(lang, "admin_dep_ok"), settings=settings)
     try:
         user = await db.get_user(deposit["user_id"])
@@ -624,7 +629,12 @@ async def wd_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: 
         asset = "USDT"
     if asset != "TON":
         asset = "USDT"
-    await db.credit_asset(item["user_id"], asset, float(item["amount"]))
+    try:
+        await db.credit_asset(item["user_id"], asset, float(item["amount"]))
+    except Exception:
+        await db.finish_withdraw(item["id"], WALLET_PENDING)
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     await paint(call, t(lang, "admin_wd_no"), settings=settings)
 
 

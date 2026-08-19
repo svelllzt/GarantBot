@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.i18n import EN, RU
 from app.services.ton import ton_to_currency
-from app.storage import DEAL_CLOSED, DEAL_LISTED, DEAL_OPEN, NFT_AVAILABLE, NFT_LOCKED, NFT_TRANSFERRED, Storage
+from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_LISTED, DEAL_OPEN, DEAL_PENDING, NFT_AVAILABLE, NFT_LOCKED, NFT_TRANSFERRED, Storage
 from app.util import seller_payout
 
 
@@ -289,6 +289,44 @@ async def main() -> None:
         nft_after = await db.get_nft(nft_d)
         assert nft_after["status"] == NFT_TRANSFERRED
         assert nft_after["owner_id"] == 2
+
+        nft_e = await db.add_nft(1, gift_id="g6", slug="gifte", title="E", num=6, msg_id=103, from_user_id=1, is_unique=True)
+        offer_e = await dsvc.open_offer(db, 1, 2, category="nft", title="GiftE", nft_id=nft_e, amount=2, currency="USDT", secret="login:pass")
+        try:
+            await dsvc.accept(db, offer_e, 1)
+            raise AssertionError("seller must not accept")
+        except DealErr as exc:
+            assert exc.key == "error"
+        assert (await db.get_deal(offer_e))["status"] == DEAL_PENDING
+        from app.keyboards import DealCB, deal_kb as deal_kb_fn
+        pending_offer = await db.get_deal(offer_e)
+        buyer_pending_kb = deal_kb_fn("ru", theme, pending_offer, 2, await db.get_user(1))
+        buyer_pending_cb = [btn.callback_data or "" for row in buyer_pending_kb.inline_keyboard for btn in row]
+        assert DealCB(a="acc", i=offer_e).pack() in buyer_pending_cb
+        seller_pending_kb = deal_kb_fn("ru", theme, pending_offer, 1, await db.get_user(1))
+        seller_pending_cb = [btn.callback_data or "" for row in seller_pending_kb.inline_keyboard for btn in row]
+        assert DealCB(a="acc", i=offer_e).pack() not in seller_pending_cb
+        await db.credit_asset(2, "USDT", 10)
+        await dsvc.accept(db, offer_e, 2)
+        await db.touch_deal(offer_e, nft_sent=1)
+        nft_f = await db.add_nft(1, gift_id="g7", slug="giftf", title="F", num=7, msg_id=104, from_user_id=1, is_unique=True)
+        try:
+            await dsvc.attach_nft(db, offer_e, 1, nft_f)
+            raise AssertionError("nft swap after send must fail")
+        except DealErr:
+            pass
+        assert (await db.get_nft(nft_e))["status"] == NFT_LOCKED
+        assert (await db.get_nft(nft_f))["status"] == NFT_AVAILABLE
+        from app.util import render_deal
+        opened_e = await db.get_deal(offer_e)
+        stranger = await render_deal(db, opened_e, "ru", "USDT", viewer_id=99)
+        assert "login:pass" not in stranger
+        assert t("ru", "deal_secret_hidden") in stranger
+        party_text = await render_deal(db, opened_e, "ru", "USDT", viewer_id=2)
+        assert "login:pass" in party_text
+        await db.touch_deal(offer_e, status=DEAL_CANCELLED)
+        await db.unfreeze_asset(2, "USDT", 2)
+        await db.set_nft_status(nft_e, NFT_AVAILABLE, deal_id=None)
 
         cfg_fd, cfg_path = tempfile.mkstemp(suffix=".ini")
         os.close(cfg_fd)
