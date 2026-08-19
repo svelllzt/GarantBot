@@ -22,6 +22,7 @@ min_withdraw = 10
 [bank]
 api_id =
 api_hash =
+; Только сама строка AgH2… / 1BVts…, без «session =» перед ней.
 session =
 username =
 ; Сколько ★ списывает Telegram за передачу уникального подарка (обычно 25).

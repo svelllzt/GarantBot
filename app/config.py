@@ -150,6 +150,8 @@ def _cast(attr: str, value: str) -> Any:
         return float(text.replace(",", "."))
     if attr == "bank_username":
         return text.lstrip("@")
+    if attr == "bank_session":
+        return clean_session_string(text)
     if attr in {"ton_mnemonic", "fragment_mnemonic"}:
         return " ".join(text.split())
     if attr == "fragment_wallet":
@@ -161,6 +163,39 @@ def _parser() -> ConfigParser:
     parser = ConfigParser(interpolation=None)
     parser.optionxform = lambda s: s.strip().lower()
     return parser
+
+
+def clean_session_string(raw: str) -> str:
+    text = (raw or "").strip().strip("\"'")
+    prefixes = ("session_string", "string_session", "pyrogram_session", "session")
+    while True:
+        low = text.lower()
+        nxt = None
+        for prefix in prefixes:
+            if not low.startswith(prefix):
+                continue
+            rest = text[len(prefix) :].lstrip()
+            if rest.startswith("="):
+                nxt = rest[1:].strip().strip("\"'")
+                break
+        if nxt is None or nxt == text:
+            break
+        text = nxt
+    return "".join(text.split())
+
+
+def session_string_ok(raw: str) -> bool:
+    import base64
+
+    text = clean_session_string(raw)
+    if len(text) < 80:
+        return False
+    padded = text + "=" * (-len(text) % 4)
+    try:
+        data = base64.urlsafe_b64decode(padded)
+    except Exception:
+        return False
+    return len(data) >= 32
 
 
 def patch_ini(path: Path, section: str, key: str, value: str) -> None:
@@ -364,6 +399,8 @@ class Settings:
         text = "" if value is None else str(value).strip()
         if attr == "bank_username":
             text = text.lstrip("@")
+        if attr == "bank_session":
+            text = clean_session_string(text)
         setattr(self, attr, _cast(attr, text))
         section, key = ATTR_TO_INI[attr]
         patch_ini(self.path, section, key, text)
@@ -372,4 +409,17 @@ class Settings:
 @lru_cache
 def get_settings() -> Settings:
     path = ensure_config()
-    return Settings(load_values(path), path)
+    values = load_values(path)
+    settings = Settings(values, path)
+    cleaned = clean_session_string(settings.bank_session)
+    settings.bank_session = cleaned
+    parser = _parser()
+    parser.read(path, encoding="utf-8")
+    if parser.has_option("bank", "session"):
+        file_raw = parser.get("bank", "session", raw=True)
+        if cleaned and clean_session_string(file_raw) != (file_raw or "").strip():
+            try:
+                patch_ini(path, "bank", "session", cleaned)
+            except Exception:
+                pass
+    return settings

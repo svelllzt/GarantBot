@@ -8,7 +8,7 @@ from typing import Any, Optional
 
 from app.pyro import Client, RawUpdateHandler, functions, types
 
-from app.config import Settings
+from app.config import Settings, clean_session_string, session_string_ok
 from app.i18n import t
 from app.storage import DEAL_CLOSED, DEAL_DISPUTE, DEAL_OPEN, DEAL_REVIEW, NFT_TRANSFERRED, Storage
 from app.services.fragment import StarsBuyer
@@ -175,23 +175,53 @@ class BankAccount:
             return False
 
     async def start(self) -> None:
-        if not self.enabled():
+        session = clean_session_string(self.settings.bank_session)
+        if session and session != (self.settings.bank_session or ""):
+            try:
+                self.settings.patch("bank_session", session)
+            except Exception:
+                self.settings.bank_session = session
+        ready = bool(self.settings.bank_api_id and self.settings.bank_api_hash and session)
+        if ready and not session_string_ok(session):
+            log.error("bank session is not a valid pyrogram string")
+            print("Сессия банка битая (часто вставлено «session = session = …»). Бот стартует без NFT.")
+            session = ""
+            ready = False
+        if not ready:
             if sys.stdin.isatty():
                 await self._first_login()
             if not self.enabled():
                 log.warning("bank account skipped: empty [bank] session (run python main.py in a console to log in)")
                 await self.stars_buyer.start()
                 return
+            session = clean_session_string(self.settings.bank_session)
         self.client = Client(
             name="bank",
             api_id=self.settings.bank_api_id,
             api_hash=self.settings.bank_api_hash,
-            session_string=self.settings.bank_session,
+            session_string=session,
             in_memory=True,
             workers=4,
         )
         self.client.add_handler(RawUpdateHandler(self._on_raw))
-        await self.client.start()
+        try:
+            await self.client.start()
+        except Exception:
+            log.exception("bank client start failed")
+            print("Банк не вошёл. Проверьте [bank] session. Бот стартует без NFT.")
+            client = self.client
+            self.client = None
+            if client is not None:
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
+                try:
+                    await client.stop()
+                except Exception:
+                    pass
+            await self.stars_buyer.start()
+            return
         self.me = await self.client.get_me()
         try:
             fresh = await self.client.export_session_string()
@@ -223,8 +253,12 @@ class BankAccount:
             except asyncio.CancelledError:
                 pass
         if self.client is not None:
-            await self.client.stop()
+            client = self.client
             self.client = None
+            try:
+                await client.stop()
+            except Exception:
+                pass
         self.me = None
 
     async def restart(self) -> None:

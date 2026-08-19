@@ -102,7 +102,7 @@ async def main() -> None:
         from app.i18n import t
         from app.util import ban_notice
         from app.buttons import EMOJI, Theme
-        from app.config import DEFAULTS, Settings
+        from app.config import DEFAULTS, Settings, load_values
         from app.services.fragment import StarsBuyer, cookies_line, parse_cookies
         assert "menu" in t("ru", "admin_screen_ask", key="menu")
         assert "Иван" in t("ru", "welcome", name="Иван")
@@ -435,6 +435,18 @@ async def main() -> None:
             assert cfg.ton_address == "EQDtestaddress"
             cfg.patch("bank_session", "sess-value")
             assert cfg.bank_session == "sess-value"
+            from app.config import clean_session_string, session_string_ok
+            assert clean_session_string("session = AgH2abcDEF") == "AgH2abcDEF"
+            assert clean_session_string('session = session = "AgH2abcDEF"') == "AgH2abcDEF"
+            assert clean_session_string("  AgH2abcDEF \n") == "AgH2abcDEF"
+            import base64 as _b64
+            fake_sess = _b64.urlsafe_b64encode(b"x" * 80).decode().rstrip("=")
+            assert session_string_ok(fake_sess)
+            assert session_string_ok("session = " + fake_sess)
+            assert not session_string_ok("session = short")
+            Path(cfg_path).write_text("[bank]\nsession = session = " + fake_sess + "\n", encoding="utf-8")
+            loaded = Settings(load_values(Path(cfg_path)), Path(cfg_path))
+            assert loaded.bank_session == fake_sess
         finally:
             os.unlink(cfg_path)
 

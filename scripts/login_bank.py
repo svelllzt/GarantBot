@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.config import get_settings
+from app.config import clean_session_string, get_settings
 from app.pyro import Client, run
 
 
@@ -77,13 +77,15 @@ def _find_in_dir(folder: Path) -> Path:
 
 
 def _session_from_json(data: dict) -> str:
-    return _json_pick(
-        data,
-        "session",
-        "session_string",
-        "string_session",
-        "pyrogram_session",
-        "sessionstring",
+    return clean_session_string(
+        _json_pick(
+            data,
+            "session",
+            "session_string",
+            "string_session",
+            "pyrogram_session",
+            "sessionstring",
+        )
     )
 
 
@@ -167,7 +169,7 @@ def main() -> None:
         data = json.loads(text)
         session = _session_from_json(data) if isinstance(data, dict) else ""
     else:
-        session = text.splitlines()[0].strip()
+        session = clean_session_string(text.splitlines()[0])
     if not session:
         raise SystemExit("В файле нет session-строки")
     settings.patch("bank_session", session)
