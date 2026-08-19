@@ -33,10 +33,11 @@ from app.services.bank import BankAccount
 from app.services import deals as svc
 from app.services.deals import DealError
 from app.states import AdminFlow
-from app.storage import WALLET_DONE, WALLET_PENDING, WALLET_REJECTED, Storage
-from app.util import ban_notice, deal_asset, extract_emoji_id, is_cancel, money, money_asset, parse_amount, parse_ton, paint
+from app.storage import WALLET_DONE, WALLET_PENDING, WALLET_REJECTED, WALLET_SENDING, Storage
+from app.util import ban_notice, deal_asset, extract_emoji_id, is_cancel, money, money_asset, parse_amount, parse_ton, paint, valid_ton
 
 router = Router()
+_wd_locks: dict[int, asyncio.Lock] = {}
 
 
 WALLET_FIELDS = (
@@ -76,6 +77,22 @@ BANK_RELOAD = {
     "bank_username",
 }
 CFG_FIELDS = set(WALLET_FIELDS) | set(SESSION_FIELDS)
+
+
+def _ticket_asset(row) -> str:
+    try:
+        asset = (row["asset"] or "USDT").upper()
+    except (KeyError, IndexError, TypeError):
+        asset = "USDT"
+    return "TON" if asset == "TON" else "USDT"
+
+
+def _wd_lock(ticket_id: int) -> asyncio.Lock:
+    lock = _wd_locks.get(ticket_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _wd_locks[ticket_id] = lock
+    return lock
 
 
 def _admin(settings: Settings, user_id: int) -> bool:
@@ -289,11 +306,17 @@ async def do_unban(message: Message, state: FSMContext, db: Storage, lang: str, 
         return
     if is_cancel(message.text or ""):
         return
-    if not (message.text or "").isdigit():
-        await message.answer(t(lang, "req_bad"))
+    raw = (message.text or "").strip()
+    user = None
+    if raw.isdigit():
+        user = await db.get_user(int(raw))
+    else:
+        user = await db.get_user_by_username(raw)
+    if user is None:
+        await message.answer(t(lang, "admin_user_missing"))
         return
-    await db.set_banned(int(message.text), False)
-    uid = int(message.text)
+    uid = int(user["user_id"])
+    await db.set_banned(uid, False)
     await state.clear()
     await message.answer(t(lang, "admin_unbanned", id=uid))
 
@@ -494,13 +517,7 @@ async def deposits(call: CallbackQuery, db: Storage, lang: str, settings: Settin
         await call.answer(t(lang, "admin_empty_list"), show_alert=True)
         return
     for row in rows:
-        asset = "USDT"
-        try:
-            asset = (row["asset"] or "USDT").upper()
-        except (KeyError, IndexError, TypeError):
-            asset = "USDT"
-        if asset != "TON":
-            asset = "USDT"
+        asset = _ticket_asset(row)
         await call.message.answer(
             t(
                 lang,
@@ -525,13 +542,7 @@ async def withdraws(call: CallbackQuery, db: Storage, lang: str, settings: Setti
         await call.answer(t(lang, "admin_empty_list"), show_alert=True)
         return
     for row in rows:
-        asset = "USDT"
-        try:
-            asset = (row["asset"] or "USDT").upper()
-        except (KeyError, IndexError, TypeError):
-            asset = "USDT"
-        if asset != "TON":
-            asset = "USDT"
+        asset = _ticket_asset(row)
         await call.message.answer(
             t(
                 lang,
@@ -559,13 +570,7 @@ async def dep_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang:
     if not await db.claim_deposit(deposit["id"], WALLET_DONE):
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    asset = "USDT"
-    try:
-        asset = (deposit["asset"] or "USDT").upper()
-    except (KeyError, IndexError, TypeError):
-        asset = "USDT"
-    if asset != "TON":
-        asset = "USDT"
+    asset = _ticket_asset(deposit)
     try:
         await db.credit_asset(deposit["user_id"], asset, float(deposit["amount"]))
     except Exception:
@@ -595,47 +600,128 @@ async def dep_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang:
         await call.answer(t(lang, "error"), show_alert=True)
         return
     await paint(call, t(lang, "admin_dep_no"), settings=settings)
+    try:
+        user = await db.get_user(deposit["user_id"])
+        asset = _ticket_asset(deposit)
+        await call.bot.send_message(
+            deposit["user_id"],
+            t(
+                (user["lang"] if user else None) or "ru",
+                "deposit_rejected",
+                id=deposit["id"],
+                amount=money_asset(deposit["amount"], asset),
+                currency=asset,
+            ),
+        )
+    except Exception:
+        pass
 
 
 @router.callback_query(AdminCB.filter(F.a == "wd_ok"))
-async def wd_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings):
+async def wd_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings, ton):
     if await _deny(call, lang, settings):
         return
-    item = await db.get_withdraw(callback_data.i)
-    if item is None or item["status"] != "pending":
-        await call.answer(t(lang, "error"), show_alert=True)
-        return
-    if not await db.claim_withdraw(item["id"], WALLET_DONE):
-        await call.answer(t(lang, "error"), show_alert=True)
-        return
-    await paint(call, t(lang, "admin_wd_ok"), settings=settings)
+    wid = int(callback_data.i)
+    async with _wd_lock(wid):
+        item = await db.get_withdraw(wid)
+        if item is None or item["status"] not in {WALLET_PENDING, WALLET_SENDING}:
+            await call.answer(t(lang, "error"), show_alert=True)
+            return
+        dest = (item["details"] or "").strip()
+        if not valid_ton(dest):
+            await call.answer(t(lang, "admin_wd_bad_addr"), show_alert=True)
+            return
+        if not getattr(ton, "can_send", False):
+            await call.answer(t(lang, "admin_wd_no_wallet"), show_alert=True)
+            return
+        asset = _ticket_asset(item)
+        amount = float(item["amount"] or 0)
+        if amount <= 0:
+            await call.answer(t(lang, "error"), show_alert=True)
+            return
+        if item["status"] == WALLET_PENDING:
+            if not await db.claim_withdraw(item["id"], WALLET_SENDING):
+                await call.answer(t(lang, "error"), show_alert=True)
+                return
+        try:
+            await call.answer(t(lang, "admin_wd_sending"))
+        except Exception:
+            pass
+        tx = await ton.payout(dest, amount, asset, comment=f"W{item['id']}")
+        if not tx:
+            try:
+                await db.finish_withdraw(item["id"], WALLET_PENDING)
+            except Exception:
+                pass
+            await paint(call, t(lang, "admin_wd_fail", id=item["id"]), settings=settings)
+            return
+        await db.finish_withdraw(item["id"], WALLET_DONE, tx)
+        await paint(
+            call,
+            t(
+                lang,
+                "admin_wd_ok",
+                id=item["id"],
+                amount=money_asset(amount, asset),
+                currency=asset,
+                address=dest,
+                hash=tx,
+            ),
+            settings=settings,
+        )
+        try:
+            user = await db.get_user(item["user_id"])
+            await call.bot.send_message(
+                item["user_id"],
+                t(
+                    (user["lang"] if user else None) or "ru",
+                    "withdraw_sent",
+                    id=item["id"],
+                    amount=money_asset(amount, asset),
+                    currency=asset,
+                    address=dest,
+                    hash=tx,
+                ),
+            )
+        except Exception:
+            pass
 
 
 @router.callback_query(AdminCB.filter(F.a == "wd_no"))
 async def wd_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: str, settings: Settings):
     if await _deny(call, lang, settings):
         return
-    item = await db.get_withdraw(callback_data.i)
-    if item is None or item["status"] != "pending":
-        await call.answer(t(lang, "error"), show_alert=True)
-        return
-    if not await db.claim_withdraw(item["id"], WALLET_REJECTED):
-        await call.answer(t(lang, "error"), show_alert=True)
-        return
-    asset = "USDT"
-    try:
-        asset = (item["asset"] or "USDT").upper()
-    except (KeyError, IndexError, TypeError):
-        asset = "USDT"
-    if asset != "TON":
-        asset = "USDT"
-    try:
-        await db.credit_asset(item["user_id"], asset, float(item["amount"]))
-    except Exception:
-        await db.finish_withdraw(item["id"], WALLET_PENDING)
-        await call.answer(t(lang, "error"), show_alert=True)
-        return
-    await paint(call, t(lang, "admin_wd_no"), settings=settings)
+    wid = int(callback_data.i)
+    async with _wd_lock(wid):
+        item = await db.get_withdraw(wid)
+        if item is None or item["status"] not in {WALLET_PENDING, WALLET_SENDING}:
+            await call.answer(t(lang, "error"), show_alert=True)
+            return
+        if not await db.claim_withdraw(item["id"], WALLET_REJECTED, from_status=item["status"]):
+            await call.answer(t(lang, "error"), show_alert=True)
+            return
+        asset = _ticket_asset(item)
+        try:
+            await db.credit_asset(item["user_id"], asset, float(item["amount"]))
+        except Exception:
+            await db.finish_withdraw(item["id"], item["status"])
+            await call.answer(t(lang, "error"), show_alert=True)
+            return
+        await paint(call, t(lang, "admin_wd_no"), settings=settings)
+        try:
+            user = await db.get_user(item["user_id"])
+            await call.bot.send_message(
+                item["user_id"],
+                t(
+                    (user["lang"] if user else None) or "ru",
+                    "withdraw_rejected",
+                    id=item["id"],
+                    amount=money_asset(item["amount"], asset),
+                    currency=asset,
+                ),
+            )
+        except Exception:
+            pass
 
 
 @router.callback_query(AdminCB.filter(F.a == "home"))

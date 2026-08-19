@@ -57,6 +57,7 @@ DEAL_FIELDS = {
     "secret",
 }
 WALLET_PENDING = "pending"
+WALLET_SENDING = "sending"
 WALLET_DONE = "done"
 WALLET_REJECTED = "rejected"
 
@@ -197,6 +198,7 @@ class Storage:
                 asset TEXT NOT NULL DEFAULT 'USDT',
                 details TEXT NOT NULL,
                 status TEXT NOT NULL,
+                tx_hash TEXT,
                 created_at INTEGER NOT NULL
             );
 
@@ -306,6 +308,7 @@ class Storage:
             "withdrawals",
             {
                 "asset": "TEXT NOT NULL DEFAULT 'USDT'",
+                "tx_hash": "TEXT",
             },
         )
         await self._add_missing(
@@ -333,8 +336,12 @@ class Storage:
         await self.db.execute(
             "CREATE INDEX IF NOT EXISTS idx_deals_ton_comment ON deals(ton_comment)"
         )
+        await self.db.execute("DROP INDEX IF EXISTS idx_wd_one_pending")
         await self.db.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_wd_one_pending ON withdrawals(user_id) WHERE status = 'pending'"
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_wd_one_open
+            ON withdrawals(user_id) WHERE status IN ('pending', 'sending')
+            """
         )
         await self.db.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_inv_slug ON inventory(slug) WHERE IFNULL(slug, '') != ''"
@@ -966,17 +973,20 @@ class Storage:
 
     async def pending_withdraws(self) -> list[aiosqlite.Row]:
         return await self.fetchall(
-            "SELECT * FROM withdrawals WHERE status = ? ORDER BY id DESC",
-            (WALLET_PENDING,),
+            "SELECT * FROM withdrawals WHERE status IN (?, ?) ORDER BY id DESC",
+            (WALLET_PENDING, WALLET_SENDING),
         )
 
-    async def finish_withdraw(self, withdraw_id: int, status: str) -> None:
-        await self.execute("UPDATE withdrawals SET status = ? WHERE id = ?", (status, withdraw_id))
+    async def finish_withdraw(self, withdraw_id: int, status: str, tx_hash: Optional[str] = None) -> None:
+        await self.execute(
+            "UPDATE withdrawals SET status = ?, tx_hash = COALESCE(?, tx_hash) WHERE id = ?",
+            (status, tx_hash, withdraw_id),
+        )
 
-    async def claim_withdraw(self, withdraw_id: int, status: str) -> bool:
+    async def claim_withdraw(self, withdraw_id: int, status: str, from_status: str = WALLET_PENDING) -> bool:
         cur = await self.execute(
             "UPDATE withdrawals SET status = ? WHERE id = ? AND status = ?",
-            (status, withdraw_id, WALLET_PENDING),
+            (status, withdraw_id, from_status),
         )
         return cur.rowcount == 1
 

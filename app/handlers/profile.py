@@ -257,7 +257,7 @@ async def _place_withdraw(message: Message, state: FSMContext, db: Storage, lang
         wid = await db.create_withdraw(message.from_user.id, amount, "ton", dest, asset)
     except ValueError:
         await db.credit_asset(message.from_user.id, asset, amount)
-        await message.answer(t(lang, "error"))
+        await message.answer(t(lang, "withdraw_busy"))
         await state.clear()
         return
     await state.clear()

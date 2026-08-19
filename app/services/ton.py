@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 from typing import Optional
@@ -141,6 +142,7 @@ class TonEscrow:
         self.address = (settings.ton_address or "").strip()
         self.can_send = False
         self._nano = False
+        self._send_lock = asyncio.Lock()
 
     async def connect(self) -> None:
         mnemonic = (self.settings.ton_mnemonic or "").strip()
@@ -218,6 +220,27 @@ class TonEscrow:
     async def incoming(self, comment: str) -> Optional[float]:
         return await incoming_by_comment(self.settings, comment, address=self.address)
 
+    def _tx_id(self, tx) -> Optional[str]:
+        if tx is None:
+            return None
+        for attr in ("normalized_hash", "hash", "msg_hash"):
+            value = getattr(tx, attr, None)
+            if value and not callable(value):
+                return str(value)
+        text = str(tx).strip()
+        return text or None
+
+    def _gas_nano(self) -> int:
+        gas = float(self.settings.ton_gas or 0.05)
+        if gas <= 0:
+            gas = 0.05
+        try:
+            from ton_core import to_nano
+
+            return int(to_nano(str(gas)))
+        except Exception:
+            return int(round(gas * 1_000_000_000))
+
     async def send(self, dest: str, amount: float, comment: str = "") -> Optional[str]:
         if not self._wallet or amount <= 0:
             return None
@@ -229,20 +252,70 @@ class TonEscrow:
                 payload = to_nano(amount)
             except Exception:
                 payload = int(round(amount * 1_000_000_000))
+        async with self._send_lock:
+            try:
+                tx = await self._wallet.transfer(
+                    destination=dest,
+                    amount=payload,
+                    body=comment or None,
+                )
+            except Exception:
+                log.exception("ton transfer failed")
+                return None
+        return self._tx_id(tx)
+
+    async def send_usdt(self, dest: str, amount: float, comment: str = "") -> Optional[str]:
+        if not self._wallet or amount <= 0:
+            return None
+        units = int(round(float(amount) * (10 ** USDT_DECIMALS)))
+        if units <= 0:
+            return None
+        master = (self.settings.usdt_master or USDT_MASTER).strip() or USDT_MASTER
+        builder_cls = None
         try:
-            tx = await self._wallet.transfer(
-                destination=dest,
-                amount=payload,
-                body=comment or None,
-            )
+            from tonutils.contracts.wallet import JettonTransferBuilder as builder_cls
         except Exception:
-            log.exception("ton transfer failed")
-            return None
-        if tx is None:
-            return None
-        if hasattr(tx, "normalized_hash"):
-            return str(tx.normalized_hash)
-        return str(tx)
+            builder_cls = None
+        async with self._send_lock:
+            try:
+                if builder_cls is not None:
+                    tx = await self._wallet.transfer_message(
+                        builder_cls(
+                            destination=dest,
+                            jetton_amount=units,
+                            jetton_master_address=master,
+                            forward_payload=comment or None,
+                            amount=self._gas_nano(),
+                        )
+                    )
+                else:
+                    fn = getattr(self._wallet, "transfer_jetton", None)
+                    if fn is None:
+                        return None
+                    try:
+                        tx = await fn(
+                            destination=dest,
+                            jetton_master_address=master,
+                            jetton_amount=units,
+                            jetton_decimals=USDT_DECIMALS,
+                            forward_payload=comment or None,
+                        )
+                    except TypeError:
+                        tx = await fn(
+                            destination=dest,
+                            jetton_master_address=master,
+                            jetton_amount=float(amount),
+                            jetton_decimals=USDT_DECIMALS,
+                        )
+            except Exception:
+                log.exception("usdt transfer failed")
+                return None
+        return self._tx_id(tx)
+
+    async def payout(self, dest: str, amount: float, asset: str, comment: str = "") -> Optional[str]:
+        if (asset or "").upper() == "TON":
+            return await self.send(dest, amount, comment)
+        return await self.send_usdt(dest, amount, comment)
 
     async def close(self) -> None:
         client = self._client

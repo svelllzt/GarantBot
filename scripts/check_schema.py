@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.i18n import EN, RU
 from app.services.ton import ton_to_currency
-from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_LISTED, DEAL_OPEN, DEAL_PENDING, NFT_AVAILABLE, NFT_LOCKED, NFT_TRANSFERRED, Storage
+from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_LISTED, DEAL_OPEN, DEAL_PENDING, NFT_AVAILABLE, NFT_LOCKED, NFT_TRANSFERRED, WALLET_DONE, WALLET_SENDING, Storage
 from app.util import seller_payout
 
 
@@ -327,6 +327,35 @@ async def main() -> None:
         await db.touch_deal(offer_e, status=DEAL_CANCELLED)
         await db.unfreeze_asset(2, "USDT", 2)
         await db.set_nft_status(nft_e, NFT_AVAILABLE, deal_id=None)
+
+        wd_cols = await db._columns("withdrawals")
+        assert "tx_hash" in wd_cols
+        from app.services.ton import TonEscrow
+        addr = "UQ" + ("A" * 46)
+        first_wd = await db.create_withdraw(2, 3, "ton", addr, "USDT")
+        try:
+            await db.create_withdraw(2, 1, "ton", addr, "USDT")
+            raise AssertionError("second pending withdraw must fail")
+        except ValueError:
+            pass
+        assert await db.claim_withdraw(first_wd, WALLET_SENDING)
+        try:
+            await db.create_withdraw(2, 1, "ton", addr, "USDT")
+            raise AssertionError("sending withdraw must block a new one")
+        except ValueError:
+            pass
+        await db.finish_withdraw(first_wd, WALLET_DONE, "txhash")
+        done_wd = await db.get_withdraw(first_wd)
+        assert done_wd["tx_hash"] == "txhash"
+        assert done_wd["status"] == "done"
+        second_wd = await db.create_withdraw(2, 1, "ton", addr, "TON")
+        assert second_wd
+        await db.finish_withdraw(second_wd, WALLET_DONE)
+        escrow = TonEscrow(Settings(dict(DEFAULTS), Path("config.ini")))
+        assert await escrow.payout(addr, 1, "TON") is None
+        assert await escrow.payout(addr, 1, "USDT") is None
+        assert "txhash" in t("ru", "admin_wd_ok", id=1, amount="1", currency="USDT", address=addr, hash="txhash")
+        assert "txhash" in t("en", "withdraw_sent", id=1, amount="1", currency="TON", address=addr, hash="txhash")
 
         cfg_fd, cfg_path = tempfile.mkstemp(suffix=".ini")
         os.close(cfg_fd)
