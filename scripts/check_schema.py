@@ -6,7 +6,7 @@ from pathlib import Path
 from app.i18n import EN, RU
 from app.services.ton import ton_to_currency
 from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_LISTED, DEAL_OPEN, DEAL_PENDING, NFT_AVAILABLE, NFT_LOCKED, NFT_TRANSFERRED, WALLET_DONE, WALLET_SENDING, Storage
-from app.util import seller_payout
+from app.util import seller_payout, listing_is_buy
 
 
 async def main() -> None:
@@ -92,8 +92,10 @@ async def main() -> None:
         assert info["users"] >= 2
         assert "deals" in info
         deal_cols = await db._columns("deals")
-        for name in ("category", "title", "channel_msg_id", "kind", "dispute_reason", "dispute_by", "nft_sent", "currency", "secret", "cancel_by"):
+        for name in ("category", "title", "channel_msg_id", "kind", "dispute_reason", "dispute_by", "nft_sent", "currency", "secret", "cancel_by", "created_by"):
             assert name in deal_cols, name
+        msg_cols = await db._columns("dispute_messages")
+        assert "target_id" in msg_cols
 
         missing = set(RU) - set(EN)
         extra = set(EN) - set(RU)
@@ -196,6 +198,7 @@ async def main() -> None:
         user_cbs = [btn.callback_data or "" for row in main_menu("ru", theme, admin=False).inline_keyboard for btn in row]
         assert NavCB(a="admin").pack() in admin_cbs
         assert NavCB(a="admin").pack() not in user_cbs
+        assert NavCB(a="feed").pack() in user_cbs
         scr_txt = [btn.text for row in screens_admin_kb("ru", theme).inline_keyboard for btn in row]
         assert "Меню" in scr_txt and "Профиль" in scr_txt and "Пополнение" in scr_txt
         assert "menu" not in scr_txt
@@ -261,11 +264,68 @@ async def main() -> None:
         await db.touch_deal(listed_nft, status=DEAL_CLOSED)
         await db.set_nft_status(nft_id, NFT_AVAILABLE, deal_id=None)
 
+        await db.upsert_user(11, "sel11", "Продавец11")
+        await db.upsert_user(12, "buy12", "Покуп12")
+        await db.credit_asset(12, "USDT", 40)
+        buy_lid = await dsvc.create_listing(db, 12, "nft", "Want gift", 20, "buy", as_buyer=True)
+        buy_row = await db.get_deal(buy_lid)
+        assert buy_row["seller_id"] == 0
+        assert buy_row["buyer_id"] == 12
+        assert listing_is_buy(buy_row)
+        assert buy_row["created_by"] == 12
+        feed_rows = await db.listed_deals()
+        assert any(r["id"] == buy_lid for r in feed_rows)
+        nft_buy = await db.add_nft(11, gift_id="gbuy", slug="giftbuy", title="BuyNFT", num=9, msg_id=201, from_user_id=11, is_unique=True)
         try:
-            await dsvc.create_listing(db, 2, "nft", "Want gift", 20, "buy", as_buyer=True)
-            raise AssertionError("buyer listings must fail")
+            await dsvc.take_listing(db, buy_lid, 11)
+            raise AssertionError("nft buy listing must need nft")
         except DealErr as exc:
-            assert exc.key == "deal_seller_only"
+            assert exc.key == "deal_nft_need_item"
+        await dsvc.take_listing(db, buy_lid, 11, nft_id=nft_buy)
+        taken_buy = await db.get_deal(buy_lid)
+        assert taken_buy["status"] == DEAL_OPEN
+        assert taken_buy["seller_id"] == 11
+        assert taken_buy["buyer_id"] == 12
+        assert taken_buy["nft_id"] == nft_buy
+        buyer12 = await db.get_user(12)
+        assert abs(db.frozen_of(buyer12, "USDT") - 20) < 1e-9
+        await db.touch_deal(buy_lid, status=DEAL_CLOSED)
+        await db.unfreeze_asset(12, "USDT", 20)
+        await db.set_nft_status(nft_buy, NFT_AVAILABLE, deal_id=None)
+
+        goods_buy = await dsvc.create_listing(db, 12, "goods", "Want item", 8, "need it", as_buyer=True)
+        await dsvc.take_listing(db, goods_buy, 11)
+        opened_buy = await db.get_deal(goods_buy)
+        assert opened_buy["seller_id"] == 11 and opened_buy["buyer_id"] == 12
+        assert abs(db.frozen_of(await db.get_user(12), "USDT") - 8) < 1e-9
+        from app.keyboards import DealCB as DealCBChat, deal_kb as deal_kb_early
+        buy_kb = deal_kb_early("ru", theme, opened_buy, 12, await db.get_user(11))
+        buy_cbs = [btn.callback_data or "" for row in buy_kb.inline_keyboard for btn in row]
+        assert DealCBChat(a="chat", i=goods_buy).pack() in buy_cbs
+        await dsvc.request_cancel(db, goods_buy, 12)
+        await dsvc.confirm_cancel(db, goods_buy, 11)
+        assert (await db.get_deal(goods_buy))["status"] == DEAL_CANCELLED
+
+        offer_buy = await dsvc.open_offer(db, 12, 11, as_buyer=True, category="goods", title="Buy direct", amount=4, currency="USDT")
+        pending_buy = await db.get_deal(offer_buy)
+        assert pending_buy["buyer_id"] == 12 and pending_buy["seller_id"] == 11
+        assert pending_buy["created_by"] == 12
+        try:
+            await dsvc.accept(db, offer_buy, 12)
+            raise AssertionError("buyer must not accept own offer")
+        except DealErr as exc:
+            assert exc.key == "error"
+        await dsvc.accept(db, offer_buy, 11)
+        opened_off = await db.get_deal(offer_buy)
+        assert opened_off["status"] == DEAL_OPEN
+        assert abs(db.frozen_of(await db.get_user(12), "USDT") - 4) < 1e-9
+        await db.add_dispute_msg(offer_buy, 12, "hello seller", is_admin=False)
+        await db.add_dispute_msg(offer_buy, 1, "admin to seller", is_admin=True, target_id=11)
+        await db.add_dispute_msg(offer_buy, 1, "admin to buyer", is_admin=True, target_id=12)
+        thread_msgs = await db.dispute_messages(offer_buy)
+        assert len(thread_msgs) >= 3
+        await dsvc.request_cancel(db, offer_buy, 11)
+        await dsvc.confirm_cancel(db, offer_buy, 12)
 
         await db.upsert_user(4, "accseller", "Акк")
         acc_id = await dsvc.create_listing(db, 4, "acc_rbx", "Roblox", 8, "mail unbound", currency="TON", secret="rbx:mail")
@@ -297,8 +357,10 @@ async def main() -> None:
         buyer_cb = [btn.callback_data or "" for row in buyer_kb.inline_keyboard for btn in row]
         assert any(cb.startswith("deal:ok") for cb in buyer_cb)
         assert any(cb.startswith("deal:dis") for cb in buyer_cb)
-        assert any(cb.startswith("deal:photo") for cb in buyer_cb)
-        assert any(cb.startswith("deal:photo") for cb in seller_cb)
+        assert any(cb.startswith("deal:chat") for cb in buyer_cb)
+        assert any(cb.startswith("deal:chat") for cb in seller_cb)
+        assert any(cb.startswith("deal:disth") for cb in buyer_cb)
+        assert any(cb.startswith("deal:disth") for cb in seller_cb)
         assert not any(cb.startswith("deal:pdf") for cb in buyer_cb)
         assert not any(cb.startswith("deal:pay") for cb in buyer_cb)
         try:

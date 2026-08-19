@@ -68,19 +68,21 @@ async def paint(event: Message | CallbackQuery, text: str, markup=None, screen: 
             except TelegramBadRequest:
                 pass
             return
+        sent = False
         if file is not None:
-            if msg.photo:
-                try:
+            try:
+                if msg.photo:
                     await msg.edit_media(InputMediaPhoto(media=file, caption=text), reply_markup=markup)
-                except TelegramBadRequest:
+                else:
+                    try:
+                        await msg.delete()
+                    except TelegramBadRequest:
+                        pass
                     await msg.answer_photo(file, caption=text, reply_markup=markup)
-            else:
-                try:
-                    await msg.delete()
-                except TelegramBadRequest:
-                    pass
-                await msg.answer_photo(file, caption=text, reply_markup=markup)
-        else:
+                sent = True
+            except TelegramBadRequest:
+                sent = False
+        if not sent:
             try:
                 if msg.photo:
                     await msg.delete()
@@ -95,8 +97,11 @@ async def paint(event: Message | CallbackQuery, text: str, markup=None, screen: 
             pass
         return
     if file is not None:
-        await event.answer_photo(file, caption=text, reply_markup=markup)
-        return
+        try:
+            await event.answer_photo(file, caption=text, reply_markup=markup)
+            return
+        except TelegramBadRequest:
+            pass
     await event.answer(text, reply_markup=markup)
 
 

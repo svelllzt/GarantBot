@@ -8,7 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from app.catalog import label
 from app.config import Settings
 from app.i18n import t
-from app.util import deal_asset, h, is_nft_deal, money_asset, username_of
+from app.util import deal_asset, h, is_nft_deal, listing_is_buy, money_asset, username_of
 
 log = logging.getLogger("channel")
 
@@ -52,24 +52,19 @@ def listing_text(deal, poster, lang: str, currency: str) -> str:
     asset = deal_asset(deal)
     amount = f"{money_asset(deal['amount'], asset)} {asset}" if deal["amount"] is not None else "—"
     name = username_of(poster) if poster else "-"
+    buy = listing_is_buy(deal)
     if is_nft_deal(deal):
-        return t(
-            lang,
-            "channel_listing_nft",
-            id=deal["id"],
-            cat=cat,
-            title=h(title),
-            seller=name,
-            amount=amount,
-            desc=desc,
-        )
+        key = "channel_listing_nft_buy" if buy else "channel_listing_nft"
+    else:
+        key = "channel_listing_buy" if buy else "channel_listing"
     return t(
         lang,
-        "channel_listing",
+        key,
         id=deal["id"],
         cat=cat,
         title=h(title),
         seller=name,
+        buyer=name,
         amount=amount,
         desc=desc,
     )

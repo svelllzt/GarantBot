@@ -138,6 +138,23 @@ def listing_is_buy(deal) -> bool:
         return False
 
 
+def deal_creator(deal) -> int:
+    try:
+        cid = int(deal["created_by"] or 0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        cid = 0
+    if cid:
+        return cid
+    try:
+        return int(deal["seller_id"] or 0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        return 0
+
+
+def fmt_plain(value) -> str:
+    return h(value).replace("{", "").replace("}", "")
+
+
 def deal_currency(deal, fallback: str, seller=None) -> str:
     return deal_asset(deal) or fallback
 

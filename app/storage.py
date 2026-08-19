@@ -56,6 +56,7 @@ DEAL_FIELDS = {
     "currency",
     "secret",
     "cancel_by",
+    "created_by",
 }
 WALLET_PENDING = "pending"
 WALLET_SENDING = "sending"
@@ -148,6 +149,7 @@ class Storage:
                 dispute_reason TEXT,
                 dispute_by INTEGER,
                 receipt_id TEXT,
+                created_by INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -234,6 +236,7 @@ class Storage:
                 is_admin INTEGER NOT NULL DEFAULT 0,
                 text TEXT,
                 file_id TEXT,
+                target_id INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_disp_deal ON dispute_messages(deal_id, id);
@@ -298,6 +301,13 @@ class Storage:
                 "currency": "TEXT NOT NULL DEFAULT 'USDT'",
                 "secret": "TEXT",
                 "cancel_by": "INTEGER",
+                "created_by": "INTEGER NOT NULL DEFAULT 0",
+            },
+        )
+        await self._add_missing(
+            "dispute_messages",
+            {
+                "target_id": "INTEGER NOT NULL DEFAULT 0",
             },
         )
         await self._add_missing(
@@ -665,6 +675,7 @@ class Storage:
         currency: str = "USDT",
         secret: str | None = None,
         exclusive: bool = False,
+        created_by: int = 0,
     ) -> Optional[int]:
         if kind not in {KIND_GOODS, KIND_TON_RUB}:
             kind = KIND_GOODS
@@ -682,6 +693,7 @@ class Storage:
             nft_id or None,
             asset,
             (secret or "")[:2000] or None,
+            int(created_by or 0),
             stamp,
             stamp,
         )
@@ -690,9 +702,9 @@ class Storage:
             cur = await self.execute(
                 f"""
                 INSERT INTO deals (
-                    seller_id, buyer_id, status, kind, category, title, amount, description, nft_id, currency, secret, created_at, updated_at
+                    seller_id, buyer_id, status, kind, category, title, amount, description, nft_id, currency, secret, created_by, created_at, updated_at
                 )
-                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 WHERE NOT EXISTS (
                     SELECT 1 FROM deals
                     WHERE status IN ({placeholders})
@@ -710,9 +722,9 @@ class Storage:
         cur = await self.execute(
             """
             INSERT INTO deals (
-                seller_id, buyer_id, status, kind, category, title, amount, description, nft_id, currency, secret, created_at, updated_at
+                seller_id, buyer_id, status, kind, category, title, amount, description, nft_id, currency, secret, created_by, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             values,
         )
@@ -721,7 +733,7 @@ class Storage:
     async def get_deal(self, deal_id: int) -> Optional[aiosqlite.Row]:
         return await self.fetchone("SELECT * FROM deals WHERE id = ?", (deal_id,))
 
-    async def listed_deals(self, limit: int = 12) -> list[aiosqlite.Row]:
+    async def listed_deals(self, limit: int = 40) -> list[aiosqlite.Row]:
         return await self.fetchall(
             "SELECT * FROM deals WHERE status = ? ORDER BY id DESC LIMIT ?",
             (DEAL_LISTED, limit),
@@ -791,6 +803,7 @@ class Storage:
         from_status: str,
         user_id: int,
         buyer_id: int | None = None,
+        seller_id: int | None = None,
     ) -> bool:
         placeholders = ",".join("?" * len(ACTIVE_DEALS))
         stamp = now()
@@ -799,6 +812,9 @@ class Storage:
         if buyer_id is not None:
             sets.append("buyer_id = ?")
             values.append(buyer_id)
+        if seller_id is not None:
+            sets.append("seller_id = ?")
+            values.append(seller_id)
         values.extend([deal_id, from_status, *ACTIVE_DEALS, user_id, user_id])
         cur = await self.execute(
             f"""
@@ -1171,17 +1187,18 @@ class Storage:
         text: str | None = None,
         file_id: str | None = None,
         is_admin: bool = False,
+        target_id: int = 0,
     ) -> int:
         cur = await self.execute(
             """
-            INSERT INTO dispute_messages (deal_id, user_id, is_admin, text, file_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO dispute_messages (deal_id, user_id, is_admin, text, file_id, target_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (deal_id, user_id, int(is_admin), (text or "")[:3500] or None, file_id, now()),
+            (deal_id, user_id, int(is_admin), (text or "")[:3500] or None, file_id, int(target_id or 0), now()),
         )
         return cur.lastrowid
 
-    async def dispute_messages(self, deal_id: int, limit: int = 40) -> list[aiosqlite.Row]:
+    async def dispute_messages(self, deal_id: int, limit: int = 80) -> list[aiosqlite.Row]:
         return await self.fetchall(
             """
             SELECT * FROM (

@@ -63,6 +63,7 @@ async def home_kb(db: Storage, user_id: int, lang: str, theme: Theme) -> InlineK
 def main_menu(lang: str, theme: Theme, deal_id: int | None = None, admin: bool = False) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     theme.add(kb, "btn_deal", lang, callback_data=NavCB(a="deal").pack())
+    theme.add(kb, "btn_feed", lang, callback_data=NavCB(a="feed").pack())
     theme.add(kb, "btn_faq", lang, callback_data=NavCB(a="faq").pack())
     theme.add(kb, "btn_profile", lang, callback_data=NavCB(a="profile").pack())
     url = ctx.support_url.get() or ""
@@ -75,7 +76,7 @@ def main_menu(lang: str, theme: Theme, deal_id: int | None = None, admin: bool =
         )
     else:
         theme.add(kb, "btn_support", lang, callback_data=NavCB(a="support").pack())
-    rows = [1, 2, 1]
+    rows = [1, 1, 2, 1]
     if admin:
         theme.add(kb, "btn_admin", lang, callback_data=NavCB(a="admin").pack())
         rows.append(1)
@@ -171,6 +172,16 @@ def group_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
+def role_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    theme.add(kb, "deal_buyer", lang, callback_data=DealCB(a="role", x=1).pack())
+    theme.add(kb, "deal_seller", lang, callback_data=DealCB(a="role", x=0).pack())
+    theme.add(kb, "btn_back", lang, callback_data=NavCB(a="deal").pack())
+    theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
+    kb.adjust(2, 1, 1)
+    return kb.as_markup()
+
+
 def category_kb(lang: str, theme: Theme, group: str | None = None) -> InlineKeyboardMarkup:
     from app.catalog import CATS, group_cats, label
 
@@ -219,30 +230,39 @@ def deal_kb(lang: str, theme: Theme, deal, user_id: int, seller_row=None) -> Inl
     owner = int(deal["seller_id"] or 0) or int(deal["buyer_id"] or 0)
     sent = bool(deal["nft_sent"])
     nft = is_nft_deal(deal)
-    if status == DEAL_PENDING and is_seller:
+    from app.util import deal_creator
+    creator = deal_creator(deal)
+    party = user_id in (deal["seller_id"], deal["buyer_id"])
+    if status == DEAL_PENDING and party and user_id == creator:
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
-    if status == DEAL_PENDING and user_id == deal["buyer_id"]:
+    if status == DEAL_PENDING and party and user_id != creator:
         theme.add(kb, "deal_accept", lang, callback_data=DealCB(a="acc", i=deal["id"]).pack())
         theme.add(kb, "deal_decline", lang, callback_data=DealCB(a="dec", i=deal["id"]).pack())
+        if is_seller and nft and not deal["nft_id"] and not sent:
+            theme.add(kb, "deal_set_nft", lang, callback_data=DealCB(a="nft", i=deal["id"]).pack())
     if status == DEAL_LISTED and user_id == owner:
         theme.add(kb, "deal_set_price", lang, callback_data=DealCB(a="price", i=deal["id"]).pack())
         theme.add(kb, "deal_set_desc", lang, callback_data=DealCB(a="desc", i=deal["id"]).pack())
         theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
     if status == DEAL_OPEN and not is_seller:
         theme.add(kb, "deal_manual_btn", lang, callback_data=DealCB(a="memo", i=deal["id"]).pack())
-        theme.add(kb, "deal_photo", lang, callback_data=DealCB(a="photo", i=deal["id"]).pack())
+        theme.add(kb, "deal_chat", lang, callback_data=DealCB(a="chat", i=deal["id"]).pack())
+        theme.add(kb, "deal_dispute_thread", lang, callback_data=DealCB(a="disth", i=deal["id"]).pack())
         if not nft or sent:
             theme.add(kb, "deal_confirm", lang, callback_data=DealCB(a="ok", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
         if not sent:
             theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
     if status == DEAL_OPEN and is_seller:
-        theme.add(kb, "deal_photo", lang, callback_data=DealCB(a="photo", i=deal["id"]).pack())
+        theme.add(kb, "deal_chat", lang, callback_data=DealCB(a="chat", i=deal["id"]).pack())
+        theme.add(kb, "deal_dispute_thread", lang, callback_data=DealCB(a="disth", i=deal["id"]).pack())
+        if nft and not deal["nft_id"] and not sent:
+            theme.add(kb, "deal_set_nft", lang, callback_data=DealCB(a="nft", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute", lang, callback_data=DealCB(a="dis", i=deal["id"]).pack())
         if not sent:
             theme.add(kb, "deal_cancel", lang, callback_data=DealCB(a="can", i=deal["id"]).pack())
     if status == DEAL_DISPUTE:
-        theme.add(kb, "deal_photo", lang, callback_data=DealCB(a="photo", i=deal["id"]).pack())
+        theme.add(kb, "deal_chat", lang, callback_data=DealCB(a="chat", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute_thread", lang, callback_data=DealCB(a="disth", i=deal["id"]).pack())
         theme.add(kb, "deal_dispute_evidence", lang, callback_data=DealCB(a="disev", i=deal["id"]).pack())
     if status == DEAL_REVIEW and not is_seller:
@@ -354,10 +374,11 @@ def dispute_admin_kb(lang: str, theme: Theme, deal_id: int) -> InlineKeyboardMar
     kb = InlineKeyboardBuilder()
     theme.add(kb, "admin_buyer", lang, callback_data=AdminCB(a="win_b", i=deal_id).pack())
     theme.add(kb, "admin_seller", lang, callback_data=AdminCB(a="win_s", i=deal_id).pack())
-    theme.add(kb, "admin_reply", lang, callback_data=AdminCB(a="disr", i=deal_id).pack())
+    theme.add(kb, "admin_write_seller", lang, callback_data=AdminCB(a="dsw", i=deal_id, x=1).pack())
+    theme.add(kb, "admin_write_buyer", lang, callback_data=AdminCB(a="dsw", i=deal_id, x=2).pack())
     theme.add(kb, "deal_dispute_thread", lang, callback_data=DealCB(a="disth", i=deal_id).pack())
     theme.add(kb, "admin_ban", lang, callback_data=AdminCB(a="ban").pack())
-    kb.adjust(2, 1, 1, 1)
+    kb.adjust(2, 2, 1, 1)
     return kb.as_markup()
 
 

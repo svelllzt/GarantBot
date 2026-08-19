@@ -19,6 +19,7 @@ class DealFlow(StatesGroup):
     review = State()
     dispute_reason = State()
     dispute_evidence = State()
+    chat = State()
 
 
 class AdminFlow(StatesGroup):

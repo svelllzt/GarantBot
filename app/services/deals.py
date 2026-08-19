@@ -17,7 +17,7 @@ from app.storage import (
     NFT_TRANSFERRED,
     Storage,
 )
-from app.util import deal_asset, is_nft_deal, listing_is_buy, listing_owner, nft_title, seller_payout
+from app.util import deal_asset, deal_creator, is_nft_deal, listing_is_buy, listing_owner, nft_title, seller_payout
 
 
 class DealError(Exception):
@@ -109,15 +109,24 @@ async def open_offer(
         raise DealError("deal_busy_them")
     category = normalize(category)
     kind = payment_kind(category)
-    seller_id = actor_id
-    buyer_id = peer_id
     if as_buyer:
-        raise DealError("deal_seller_only")
+        seller_id = peer_id
+        buyer_id = actor_id
+        nft_id = 0
+    else:
+        seller_id = actor_id
+        buyer_id = peer_id
     nft = needs_nft(category)
-    if nft and not nft_id:
+    if nft and not as_buyer and not nft_id:
         raise DealError("deal_nft_need_item")
     if float(amount or 0) <= 0:
         raise DealError("deal_need_price")
+    if as_buyer:
+        await _need_buyer_funds(
+            db,
+            buyer_id,
+            {"amount": amount, "currency": _norm_asset(currency), "buyer_id": buyer_id},
+        )
     deal_id = await db.create_deal(
         seller_id,
         buyer_id,
@@ -127,15 +136,16 @@ async def open_offer(
         amount=amount,
         description=(description or "")[:1000],
         currency=_norm_asset(currency),
-        secret=(secret or "")[:2000],
+        secret="" if as_buyer else (secret or "")[:2000],
         exclusive=True,
+        created_by=actor_id,
     )
     if not deal_id:
         if await db.active_deal(actor_id):
             active = await db.active_deal(actor_id)
             raise DealError("deal_busy_you", id=active["id"])
         raise DealError("deal_busy_them")
-    if nft:
+    if nft and nft_id:
         try:
             await attach_nft(db, deal_id, seller_id, nft_id)
         except DealError:
@@ -162,8 +172,6 @@ async def create_listing(
     currency: str = "USDT",
     secret: str = "",
 ) -> int:
-    if as_buyer:
-        raise DealError("deal_seller_only")
     if await db.active_deal(actor_id):
         active = await db.active_deal(actor_id)
         raise DealError("deal_busy_you", id=active["id"])
@@ -177,11 +185,18 @@ async def create_listing(
     if float(amount or 0) <= 0:
         raise DealError("deal_need_price")
     nft = needs_nft(category)
-    if nft and not nft_id:
+    if nft and not as_buyer and not nft_id:
         raise DealError("deal_nft_need_item")
+    if as_buyer:
+        await _need_buyer_funds(
+            db,
+            actor_id,
+            {"amount": amount, "currency": _norm_asset(currency), "buyer_id": actor_id},
+        )
+        nft_id = 0
     deal_id = await db.create_deal(
-        actor_id,
-        0,
+        0 if as_buyer else actor_id,
+        actor_id if as_buyer else 0,
         kind,
         category=category,
         title=title,
@@ -189,15 +204,16 @@ async def create_listing(
         amount=amount,
         description=(description or "")[:1000],
         currency=_norm_asset(currency),
-        secret=(secret or "")[:2000],
+        secret="" if as_buyer else (secret or "")[:2000],
         exclusive=True,
+        created_by=actor_id,
     )
     if not deal_id:
         if await db.active_deal(actor_id):
             active = await db.active_deal(actor_id)
             raise DealError("deal_busy_you", id=active["id"])
         raise DealError("error")
-    if nft:
+    if nft and not as_buyer:
         try:
             await attach_nft(db, deal_id, actor_id, nft_id)
         except DealError:
@@ -218,8 +234,6 @@ async def take_listing(db: Storage, deal_id: int, taker_id: int, nft_id: int = 0
         raise DealError("deal_listed_taken")
     if taker_id in (deal["seller_id"], deal["buyer_id"]):
         raise DealError("deal_self")
-    if listing_is_buy(deal):
-        raise DealError("deal_seller_only")
     if await db.active_deal(taker_id):
         active = await db.active_deal(taker_id)
         raise DealError("deal_busy_you", id=active["id"])
@@ -227,6 +241,26 @@ async def take_listing(db: Storage, deal_id: int, taker_id: int, nft_id: int = 0
     need = float(deal["amount"] or 0)
     if need <= 0:
         raise DealError("deal_need_price")
+    buy = listing_is_buy(deal)
+    if buy:
+        if nft and not nft_id:
+            raise DealError("deal_nft_need_item")
+        await _need_buyer_funds(db, deal["buyer_id"], deal)
+        if not await db.claim_open_for_user(deal_id, DEAL_LISTED, taker_id, seller_id=taker_id):
+            if await db.active_deal(taker_id):
+                active = await db.active_deal(taker_id)
+                raise DealError("deal_busy_you", id=active["id"])
+            raise DealError("deal_listed_taken")
+        deal = await db.get_deal(deal_id)
+        try:
+            if nft:
+                await attach_nft(db, deal_id, taker_id, nft_id)
+            await _freeze_buyer(db, deal)
+        except DealError:
+            await _release_nft(db, deal)
+            await db.claim_deal(deal_id, DEAL_OPEN, status=DEAL_LISTED, seller_id=0, nft_id=None)
+            raise
+        return
     if nft and not deal["nft_id"]:
         raise DealError("deal_nft_need_item")
     await _need_buyer_funds(db, taker_id, deal)
@@ -247,7 +281,12 @@ async def accept(db: Storage, deal_id: int, user_id: int) -> None:
     deal = await db.get_deal(deal_id)
     if deal is None or deal["status"] != DEAL_PENDING:
         raise DealError("error")
-    if user_id != deal["buyer_id"]:
+    if user_id not in (deal["seller_id"], deal["buyer_id"]):
+        raise DealError("error")
+    creator = deal_creator(deal)
+    if creator and user_id == creator:
+        raise DealError("error")
+    if not creator and user_id != deal["buyer_id"]:
         raise DealError("error")
     if is_nft_deal(deal) and not deal["nft_id"]:
         raise DealError("deal_nft_need_item")

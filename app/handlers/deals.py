@@ -26,6 +26,7 @@ from app.keyboards import (
     offer_kb,
     peer_cancel_kb,
     preview_kb,
+    role_kb,
     skip_review_kb,
     take_kb,
     dispute_admin_kb,
@@ -37,9 +38,11 @@ from app.states import DealFlow
 from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_DISPUTE, DEAL_LISTED, DEAL_OPEN, DEAL_PENDING, DEAL_REVIEW, NFT_AVAILABLE, NFT_TRANSFERRED, Storage
 from app.util import (
     deal_asset,
+    fmt_plain,
     history_line,
     is_cancel,
     is_nft_deal,
+    listing_is_buy,
     listing_owner,
     money_asset,
     nft_title,
@@ -106,9 +109,10 @@ async def _publish_listing(bot, user_id: int, state: FSMContext, db: Storage, la
             data.get("title") or label(category, lang),
             float(data.get("amount") or 0),
             data.get("description") or "",
+            as_buyer=bool(data.get("as_buyer")),
             nft_id=int(data.get("nft_id") or 0),
             currency=data.get("currency") or "USDT",
-            secret=data.get("secret") or "",
+            secret="" if data.get("as_buyer") else data.get("secret") or "",
         )
     except DealError as exc:
         await bot.send_message(user_id, svc.err_text(lang, exc))
@@ -118,7 +122,7 @@ async def _publish_listing(bot, user_id: int, state: FSMContext, db: Storage, la
     deal = await db.get_deal(deal_id)
     poster = await db.get_user(user_id)
     posted = await ch.publish(bot, settings, db, deal, poster)
-    extra = t(lang, "deal_list_ok", id=deal_id)
+    extra = t(lang, "deal_list_ok_buy" if data.get("as_buyer") else "deal_list_ok", id=deal_id)
     if not posted:
         extra = extra + "\n" + t(lang, "deal_list_no_channel")
     await bot.send_message(user_id, extra)
@@ -178,7 +182,7 @@ async def _ask_price(message_or_call, state: FSMContext, lang: str, theme: Theme
 async def _after_category(call: CallbackQuery, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings) -> None:
     data = await state.get_data()
     category = data.get("category") or "goods"
-    if needs_nft(category):
+    if needs_nft(category) and not data.get("as_buyer"):
         items = await db.nfts_of(call.from_user.id, NFT_AVAILABLE)
         if not items:
             await call.answer(t(lang, "deal_nft_need_item"), show_alert=True)
@@ -216,7 +220,7 @@ async def new_deal(call: CallbackQuery, state: FSMContext, db: Storage, lang: st
 @router.callback_query(DealCB.filter(F.a == "mode"))
 async def pick_mode(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings):
     listing = bool(callback_data.x)
-    await state.update_data(listing=listing, as_buyer=False)
+    await state.update_data(listing=listing)
     if listing:
         await _publish_listing(call.bot, call.from_user.id, state, db, lang, settings, theme)
         await call.answer()
@@ -241,8 +245,15 @@ async def pick_cat(call: CallbackQuery, callback_data: CatCB, state: FSMContext,
         category = cats[0]
     else:
         category = normalize(raw)
-    await state.update_data(category=category, as_buyer=False, title=label(category, lang))
+    await state.update_data(category=category, title=label(category, lang))
+    await paint(call, t(lang, "deal_role"), role_kb(lang, theme), screen="deal", settings=settings)
+
+
+@router.callback_query(DealCB.filter(F.a == "role"))
+async def pick_role(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings):
+    await state.update_data(as_buyer=bool(callback_data.x))
     await _after_category(call, state, db, lang, theme, settings)
+    await call.answer()
 
 
 @router.callback_query(DealCB.filter(F.a == "nftflow"))
@@ -289,7 +300,7 @@ async def find_peer(message: Message, state: FSMContext, db: Storage, lang: str,
             nick=h(peer["nick"] or peer["first_name"] or "-"),
             username=username_of(peer),
             deals=peer["deals_count"],
-            role=t(lang, "deal_seller"),
+            role=t(lang, "deal_buyer" if data.get("as_buyer") else "deal_seller"),
             kind=kind_label,
         ),
         reply_markup=preview_kb(lang, theme),
@@ -334,7 +345,7 @@ async def save_create_price(message: Message, state: FSMContext, db: Storage, la
         await message.answer(t(lang, "req_bad"))
         return
     await state.update_data(amount=amount)
-    if needs_nft(data.get("category")):
+    if needs_nft(data.get("category")) or data.get("as_buyer"):
         await state.set_state(DealFlow.description)
         await message.answer(t(lang, "deal_ask_desc"), reply_markup=cancel_kb(lang, theme))
         return
@@ -358,31 +369,53 @@ async def save_secret(message: Message, state: FSMContext, lang: str, theme: The
 @router.callback_query(NavCB.filter(F.a == "feed"))
 async def feed(call: CallbackQuery, db: Storage, lang: str, settings: Settings, theme: Theme):
     rows = await db.listed_deals()
-    if not rows:
-        await call.answer(t(lang, "deal_feed_empty"), show_alert=True)
-        return
     kb = InlineKeyboardBuilder()
-    lines = []
+    if not rows:
+        theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
+        await paint(call, t(lang, "deal_feed_empty"), kb.as_markup(), screen="listing", settings=settings)
+        return
+    lines = [t(lang, "deal_feed_title")]
     for deal in rows:
-        seller = await db.get_user(deal["seller_id"]) if deal["seller_id"] else await db.get_user(deal["buyer_id"])
+        owner_id = listing_owner(deal)
+        owner = await db.get_user(owner_id) if owner_id else None
         cat = label(deal["category"] if "category" in deal.keys() else None, lang)
-        title = deal["title"] or cat
+        title = fmt_plain((deal["title"] or cat)[:80])
         asset = deal_asset(deal)
-        lines.append(
-            t(
-                lang,
-                "deal_feed_line",
-                id=deal["id"],
-                cat=cat,
-                amount=f"{money_asset(deal['amount'], asset)} {asset}" if deal["amount"] is not None else "—",
-                title=title,
-                seller=username_of(seller) if seller else "-",
+        amount = f"{money_asset(deal['amount'], asset)} {asset}" if deal["amount"] is not None else "—"
+        name = username_of(owner) if owner else "-"
+        if listing_is_buy(deal):
+            lines.append(
+                t(
+                    lang,
+                    "deal_feed_line_buy",
+                    id=deal["id"],
+                    cat=cat,
+                    amount=amount,
+                    title=title,
+                    buyer=name,
+                )
             )
-        )
+        else:
+            lines.append(
+                t(
+                    lang,
+                    "deal_feed_line",
+                    id=deal["id"],
+                    cat=cat,
+                    amount=amount,
+                    title=title,
+                    seller=name,
+                )
+            )
         kb.button(text=f"#{deal['id']} {title[:28]}", style="primary", callback_data=DealCB(a="card", i=deal["id"]).pack())
     theme.add(kb, "btn_menu", lang, callback_data=NavCB(a="menu").pack())
     kb.adjust(1)
-    await paint(call, "\n\n".join(lines), kb.as_markup(), screen="listing", settings=settings)
+    text = "\n\n".join(lines)[:3500]
+    screen = "listing" if len(text) <= 900 else None
+    try:
+        await paint(call, text, kb.as_markup(), screen=screen, settings=settings)
+    except Exception:
+        await paint(call, text, kb.as_markup(), settings=settings)
 
 
 @router.callback_query(DealCB.filter(F.a == "card"))
@@ -445,8 +478,32 @@ async def take_deal(call: CallbackQuery, callback_data: DealCB, db: Storage, lan
     if deal is None:
         await call.answer(t(lang, "error"), show_alert=True)
         return
+    if listing_is_buy(deal) and needs_nft(deal["category"] if "category" in deal.keys() else "") and not deal["nft_id"]:
+        items = await db.nfts_of(call.from_user.id, NFT_AVAILABLE)
+        if not items:
+            await call.answer(t(lang, "deal_nft_need_item"), show_alert=True)
+            return
+        await paint(
+            call,
+            t(lang, "deal_nft_pick"),
+            nft_pick_kb(lang, theme, deal["id"], items, action="nfttake"),
+            screen="deal",
+            settings=settings,
+        )
+        return
     try:
         await svc.take_listing(db, callback_data.i, call.from_user.id)
+    except DealError as exc:
+        await call.answer(svc.err_text(lang, exc), show_alert=True)
+        return
+    deal = await db.get_deal(callback_data.i)
+    await _after_take(call, db, deal, lang, settings, theme, ton, bank=bank)
+
+
+@router.callback_query(DealCB.filter(F.a == "nfttake"))
+async def take_with_nft(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton, bank):
+    try:
+        await svc.take_listing(db, callback_data.i, call.from_user.id, nft_id=callback_data.x)
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
@@ -497,14 +554,14 @@ async def send_offer(call: CallbackQuery, state: FSMContext, db: Storage, lang: 
             db,
             call.from_user.id,
             peer_id,
-            False,
+            bool(data.get("as_buyer")),
             category=category,
             title=data.get("title") or label(category, lang),
             nft_id=nft_id,
             amount=float(data.get("amount") or 0),
             description=data.get("description") or "",
             currency=data.get("currency") or "USDT",
-            secret=data.get("secret") or "",
+            secret="" if data.get("as_buyer") else data.get("secret") or "",
         )
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
@@ -534,7 +591,7 @@ async def send_offer(call: CallbackQuery, state: FSMContext, db: Storage, lang: 
                 username=username_of(me),
                 uid=me["user_id"],
                 deals=me["deals_count"],
-                role=t(peer_lang, "deal_buyer"),
+                role=t(peer_lang, "deal_seller" if data.get("as_buyer") else "deal_buyer"),
                 kind=kind_label,
             ),
             reply_markup=offer_kb(peer_lang, theme, deal_id),
@@ -552,9 +609,29 @@ async def accept_offer(call: CallbackQuery, callback_data: DealCB, db: Storage, 
     try:
         await svc.accept(db, callback_data.i, call.from_user.id)
     except DealError as exc:
+        if exc.key == "deal_nft_need_item":
+            items = await db.nfts_of(call.from_user.id, NFT_AVAILABLE)
+            if not items:
+                await call.answer(svc.err_text(lang, exc), show_alert=True)
+                return
+            await paint(
+                call,
+                t(lang, "deal_nft_pick"),
+                nft_pick_kb(lang, theme, callback_data.i, items, action="nftacc"),
+                screen="deal",
+                settings=settings,
+            )
+            return
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
-    deal = await db.get_deal(callback_data.i)
+    await _after_accept(call, db, callback_data.i, lang, settings, theme, ton, bank)
+
+
+async def _after_accept(call: CallbackQuery, db: Storage, deal_id: int, lang: str, settings: Settings, theme: Theme, ton, bank):
+    deal = await db.get_deal(deal_id)
+    if deal is None:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     try:
         await call.message.edit_reply_markup()
     except Exception:
@@ -583,7 +660,7 @@ async def accept_offer(call: CallbackQuery, callback_data: DealCB, db: Storage, 
 
 
 @router.callback_query(DealCB.filter(F.a == "nftacc"))
-async def accept_with_nft(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton):
+async def accept_with_nft(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton, bank):
     try:
         title = await svc.attach_nft(db, callback_data.i, call.from_user.id, callback_data.x)
     except DealError as exc:
@@ -591,6 +668,16 @@ async def accept_with_nft(call: CallbackQuery, callback_data: DealCB, db: Storag
         return
     deal = await db.get_deal(callback_data.i)
     await call.answer(t(lang, "deal_nft_set", title=title), show_alert=True)
+    if deal and deal["status"] == DEAL_PENDING:
+        try:
+            await svc.accept(db, callback_data.i, call.from_user.id)
+        except DealError as exc:
+            await call.answer(svc.err_text(lang, exc), show_alert=True)
+            if deal:
+                await _show_deal(call.bot, db, deal, call.from_user.id, lang, settings, theme, event=call, ton=ton)
+            return
+        await _after_accept(call, db, callback_data.i, lang, settings, theme, ton, bank)
+        return
     if deal:
         await _show_deal(call.bot, db, deal, call.from_user.id, lang, settings, theme, event=call, ton=ton)
 
@@ -997,17 +1084,36 @@ async def dispute(call: CallbackQuery, callback_data: DealCB, state: FSMContext,
     await call.answer()
 
 
-async def _thread_text(db: Storage, deal_id: int, lang: str) -> str:
+async def _thread_text(db: Storage, deal_id: int, lang: str, *, viewer_id: int = 0, is_admin: bool = False) -> str:
+    deal = await db.get_deal(deal_id)
     rows = await db.dispute_messages(deal_id)
     if not rows:
         return t(lang, "deal_dispute_empty")
+    seller_id = int(deal["seller_id"] or 0) if deal else 0
+    buyer_id = int(deal["buyer_id"] or 0) if deal else 0
     chunks = []
     for row in rows:
+        try:
+            target = int(row["target_id"] or 0)
+        except (KeyError, IndexError, TypeError, ValueError):
+            target = 0
+        if row["is_admin"] and not is_admin and target and target != viewer_id:
+            continue
         user = await db.get_user(row["user_id"]) if row["user_id"] else None
+        uname = username_of(user) if user else str(row["user_id"] or "-")
         if row["is_admin"]:
-            who = t(lang, "admin_menu")
+            if target and target == seller_id:
+                who = t(lang, "deal_thread_admin_seller")
+            elif target and target == buyer_id:
+                who = t(lang, "deal_thread_admin_buyer")
+            else:
+                who = t(lang, "deal_thread_admin")
+        elif row["user_id"] == seller_id:
+            who = t(lang, "deal_thread_seller", who=uname)
+        elif row["user_id"] == buyer_id:
+            who = t(lang, "deal_thread_buyer", who=uname)
         elif user:
-            who = "@" + username_of(user)
+            who = "@" + uname
         else:
             who = str(row["user_id"])
         body = h(row["text"]) if row["text"] else t(lang, "deal_dispute_photo")
@@ -1015,12 +1121,27 @@ async def _thread_text(db: Storage, deal_id: int, lang: str) -> str:
     return "\n\n".join(chunks)[:3500]
 
 
-async def _push_dispute(bot, db: Storage, settings: Settings, deal, sender_id: int, text: str, file_id: str | None = None, *, to_admins: bool = True) -> None:
-    targets = {deal["seller_id"], deal["buyer_id"]}
+async def _push_dispute(
+    bot,
+    db: Storage,
+    settings: Settings,
+    deal,
+    sender_id: int,
+    text: str,
+    file_id: str | None = None,
+    *,
+    to_admins: bool = True,
+    targets: set[int] | None = None,
+) -> None:
+    if targets is None:
+        targets = {deal["seller_id"], deal["buyer_id"]}
+    else:
+        targets = set(targets)
     if to_admins:
         targets.update(settings.admins)
     targets.discard(sender_id)
     targets.discard(0)
+    targets.discard(None)
     for uid in targets:
         try:
             if file_id:
@@ -1071,6 +1192,9 @@ async def dispute_reason(message: Message, state: FSMContext, db: Storage, lang:
     )
     if caption:
         admin_text = admin_text + "\n\n" + caption
+    thread = await _thread_text(db, deal["id"], "ru", viewer_id=0, is_admin=True)
+    if thread and thread != t("ru", "deal_dispute_empty"):
+        admin_text = admin_text + "\n\n" + thread
     for admin_id in settings.admins:
         try:
             await message.bot.send_message(admin_id, admin_text, reply_markup=dispute_admin_kb("ru", theme, deal["id"]))
@@ -1079,7 +1203,7 @@ async def dispute_reason(message: Message, state: FSMContext, db: Storage, lang:
     await _show_deal(message.bot, db, deal, message.from_user.id, lang, settings, theme, message=message)
 
 
-@router.callback_query(DealCB.filter(F.a.in_({"photo", "disev"})))
+@router.callback_query(DealCB.filter(F.a.in_({"photo", "disev", "chat"})))
 async def deal_photo_start(call: CallbackQuery, callback_data: DealCB, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings):
     deal = await db.get_deal(callback_data.i)
     if deal is None:
@@ -1096,9 +1220,9 @@ async def deal_photo_start(call: CallbackQuery, callback_data: DealCB, state: FS
     if deal["status"] not in {DEAL_OPEN, DEAL_DISPUTE}:
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    await state.set_state(DealFlow.dispute_evidence)
+    await state.set_state(DealFlow.chat)
     await state.update_data(deal_id=deal["id"])
-    ask = t(lang, "deal_dispute_evidence_ask") if deal["status"] == DEAL_DISPUTE else t(lang, "deal_photo_ask")
+    ask = t(lang, "deal_dispute_evidence_ask") if deal["status"] == DEAL_DISPUTE else t(lang, "deal_chat_ask")
     await call.message.answer(ask, reply_markup=evidence_kb(lang, theme, deal["id"]))
     await call.answer()
 
@@ -1118,6 +1242,7 @@ async def dispute_evidence_done(call: CallbackQuery, callback_data: DealCB, stat
     await call.answer()
 
 
+@router.message(DealFlow.chat)
 @router.message(DealFlow.dispute_evidence)
 async def dispute_evidence(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
     if is_cancel(message.text or ""):
@@ -1138,18 +1263,29 @@ async def dispute_evidence(message: Message, state: FSMContext, db: Storage, lan
     if not caption and not file_id:
         await message.answer(t(lang, "req_bad"))
         return
-    is_admin = settings.is_admin(message.from_user.id)
-    await db.add_dispute_msg(deal_id, message.from_user.id, caption or None, file_id, is_admin=is_admin)
+    is_admin = settings.is_admin(message.from_user.id) and message.from_user.id not in (deal["seller_id"], deal["buyer_id"])
+    peer = deal["seller_id"] if message.from_user.id == deal["buyer_id"] else deal["buyer_id"]
+    await db.add_dispute_msg(
+        deal_id,
+        message.from_user.id,
+        caption or None,
+        file_id,
+        is_admin=is_admin,
+        target_id=peer if is_admin else 0,
+    )
     who = username_of(await db.get_user(message.from_user.id))
+    if is_admin:
+        note = t(lang, "deal_dispute_new", id=deal_id, who=t(lang, "admin_menu"), text=h(caption) if caption else t(lang, "deal_dispute_photo"))
+        await _push_dispute(message.bot, db, settings, deal, message.from_user.id, note, file_id, to_admins=False, targets={peer})
+        await message.answer(t(lang, "admin_wrote"), reply_markup=evidence_kb(lang, theme, deal_id))
+        return
     if deal["status"] == DEAL_DISPUTE:
-        note = t(lang, "deal_dispute_new", id=deal_id, who=who, text=h(caption) if caption else t(lang, "deal_dispute_photo"))
-        await _push_dispute(message.bot, db, settings, deal, message.from_user.id, note, file_id, to_admins=True)
+        note = t(lang, "deal_chat_peer", id=deal_id, who=who, text=h(caption) if caption else t(lang, "deal_dispute_photo"))
+        await _push_dispute(message.bot, db, settings, deal, message.from_user.id, note, file_id, to_admins=True, targets={peer})
     else:
-        note = t(lang, "deal_photo_peer", id=deal_id, who=who)
-        if caption:
-            note = note + "\n" + h(caption)
-        await _push_dispute(message.bot, db, settings, deal, message.from_user.id, note, file_id, to_admins=False)
-    await message.answer(t(lang, "deal_photo_ok"), reply_markup=evidence_kb(lang, theme, deal_id))
+        note = t(lang, "deal_chat_peer", id=deal_id, who=who, text=h(caption) if caption else t(lang, "deal_dispute_photo"))
+        await _push_dispute(message.bot, db, settings, deal, message.from_user.id, note, file_id, to_admins=False, targets={peer})
+    await message.answer(t(lang, "deal_chat_ok"), reply_markup=evidence_kb(lang, theme, deal_id))
 
 
 @router.callback_query(DealCB.filter(F.a == "disth"))
@@ -1161,7 +1297,13 @@ async def dispute_thread(call: CallbackQuery, callback_data: DealCB, db: Storage
     if call.from_user.id not in (deal["seller_id"], deal["buyer_id"]) and not settings.is_admin(call.from_user.id):
         await call.answer(t(lang, "error"), show_alert=True)
         return
-    text = await _thread_text(db, deal["id"], lang)
+    text = await _thread_text(
+        db,
+        deal["id"],
+        lang,
+        viewer_id=call.from_user.id,
+        is_admin=settings.is_admin(call.from_user.id),
+    )
     reason = ""
     try:
         reason = (deal["dispute_reason"] or "").strip()
@@ -1170,10 +1312,13 @@ async def dispute_thread(call: CallbackQuery, callback_data: DealCB, db: Storage
     if reason:
         text = h(reason) + "\n\n" + text
     kb = InlineKeyboardBuilder()
+    if deal["status"] in {DEAL_OPEN, DEAL_DISPUTE}:
+        theme.add(kb, "deal_chat", lang, callback_data=DealCB(a="chat", i=deal["id"]).pack())
     if deal["status"] == DEAL_DISPUTE:
         theme.add(kb, "deal_dispute_evidence", lang, callback_data=DealCB(a="disev", i=deal["id"]).pack())
         if settings.is_admin(call.from_user.id):
-            theme.add(kb, "admin_reply", lang, callback_data=AdminCB(a="disr", i=deal["id"]).pack())
+            theme.add(kb, "admin_write_seller", lang, callback_data=AdminCB(a="dsw", i=deal["id"], x=1).pack())
+            theme.add(kb, "admin_write_buyer", lang, callback_data=AdminCB(a="dsw", i=deal["id"], x=2).pack())
             theme.add(kb, "admin_buyer", lang, callback_data=AdminCB(a="win_b", i=deal["id"]).pack())
             theme.add(kb, "admin_seller", lang, callback_data=AdminCB(a="win_s", i=deal["id"]).pack())
     theme.add(kb, "btn_back", lang, callback_data=DealCB(a="open", i=deal["id"]).pack())

@@ -5,12 +5,15 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 from app.buttons import KEYS, Theme
 from app.config import Settings
 from app.i18n import t
 from app.keyboards import (
     AdminCB,
     BtnCB,
+    DealCB,
     NavCB,
     admin_bal_asset_kb,
     admin_kb,
@@ -435,8 +438,9 @@ async def disputes(call: CallbackQuery, db: Storage, lang: str, settings: Settin
             reason = ""
         extra = f"\n{reason}" if reason else ""
         asset = deal_asset(deal)
-        await call.message.answer(
-            t(
+        from app.handlers.deals import _thread_text
+        thread = await _thread_text(db, deal["id"], lang, viewer_id=call.from_user.id, is_admin=True)
+        body = t(
                 lang,
                 "deal_dispute_admin",
                 id=deal["id"],
@@ -447,8 +451,11 @@ async def disputes(call: CallbackQuery, db: Storage, lang: str, settings: Settin
                 amount=money_asset(deal["amount"], asset),
                 currency=asset,
                 nft="—" if not deal["nft_id"] else str(deal["nft_id"]),
-            )
-            + extra,
+            ) + extra
+        if thread:
+            body = body + "\n\n" + thread
+        await call.message.answer(
+            body[:3500],
             reply_markup=dispute_admin_kb(lang, theme, deal["id"]),
         )
     await call.answer()
@@ -1263,13 +1270,32 @@ async def screen_save(message: Message, state: FSMContext, db: Storage, lang: st
     await message.answer(t(lang, "admin_screen_saved", key=t(lang, f"admin_screen_name_{key}")))
 
 
-@router.callback_query(AdminCB.filter(F.a == "disr"))
-async def dispute_reply_ask(call: CallbackQuery, callback_data: AdminCB, state: FSMContext, lang: str, settings: Settings, theme: Theme):
+@router.callback_query(AdminCB.filter(F.a.in_({"disr", "dsw"})))
+async def dispute_reply_ask(call: CallbackQuery, callback_data: AdminCB, state: FSMContext, lang: str, settings: Settings, theme: Theme, db: Storage):
     if await _deny(call, lang, settings):
         return
+    deal = await db.get_deal(callback_data.i)
+    if deal is None:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
+    side = callback_data.x
+    if callback_data.a == "disr" or side not in (1, 2):
+        kb = InlineKeyboardBuilder()
+        theme.add(kb, "admin_write_seller", lang, callback_data=AdminCB(a="dsw", i=callback_data.i, x=1).pack())
+        theme.add(kb, "admin_write_buyer", lang, callback_data=AdminCB(a="dsw", i=callback_data.i, x=2).pack())
+        theme.add(kb, "btn_back", lang, callback_data=DealCB(a="disth", i=callback_data.i).pack())
+        kb.adjust(1)
+        await call.message.answer(t(lang, "admin_ask_reply", id=callback_data.i), reply_markup=kb.as_markup())
+        await call.answer()
+        return
+    target_id = deal["seller_id"] if side == 1 else deal["buyer_id"]
+    if not target_id:
+        await call.answer(t(lang, "error"), show_alert=True)
+        return
     await state.set_state(AdminFlow.dispute_reply)
-    await state.update_data(deal_id=callback_data.i)
-    await call.message.answer(t(lang, "admin_ask_reply", id=callback_data.i), reply_markup=cancel_kb(lang, theme))
+    await state.update_data(deal_id=callback_data.i, target_id=target_id, target_side=side)
+    ask_key = "admin_ask_write_seller" if side == 1 else "admin_ask_write_buyer"
+    await call.message.answer(t(lang, ask_key, id=callback_data.i), reply_markup=cancel_kb(lang, theme))
     await call.answer()
 
 
@@ -1286,15 +1312,35 @@ async def dispute_reply(message: Message, state: FSMContext, db: Storage, lang: 
         await state.clear()
         await message.answer(t(lang, "error"))
         return
+    target_id = int(data.get("target_id") or 0)
     caption = (message.caption or message.text or "").strip()
     file_id = message.photo[-1].file_id if message.photo else None
     if not caption and not file_id:
         await message.answer(t(lang, "req_bad"))
         return
-    await db.add_dispute_msg(deal_id, message.from_user.id, caption or None, file_id, is_admin=True)
+    if not target_id:
+        target_id = deal["seller_id"] if int(data.get("target_side") or 0) == 1 else deal["buyer_id"]
+    await db.add_dispute_msg(
+        deal_id,
+        message.from_user.id,
+        caption or None,
+        file_id,
+        is_admin=True,
+        target_id=target_id or 0,
+    )
     await state.clear()
     note = t(lang, "deal_dispute_new", id=deal_id, who=t(lang, "admin_menu"), text=caption or t(lang, "deal_dispute_photo"))
     from app.handlers.deals import _push_dispute
 
-    await _push_dispute(message.bot, db, settings, deal, message.from_user.id, note, file_id)
-    await message.answer(t(lang, "admin_done"), reply_markup=dispute_admin_kb(lang, theme, deal_id))
+    await _push_dispute(
+        message.bot,
+        db,
+        settings,
+        deal,
+        message.from_user.id,
+        note,
+        file_id,
+        to_admins=False,
+        targets={target_id} if target_id else {deal["seller_id"], deal["buyer_id"]},
+    )
+    await message.answer(t(lang, "admin_wrote"), reply_markup=dispute_admin_kb(lang, theme, deal_id))
