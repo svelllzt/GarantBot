@@ -5,11 +5,11 @@ from aiogram.types import CallbackQuery, Message
 from app.buttons import Theme
 from app.config import Settings
 from app.i18n import t
-from app.keyboards import NavCB, WalletCB, cancel_kb, deposit_kb, lang_kb, requisites_kb
+from app.keyboards import NavCB, WalletCB, asset_pick_kb, cancel_kb, deposit_kb, lang_kb, requisites_kb, ticket_kb
 from app.services.deposits import DepositWatch, user_memo
 from app.states import Requisites, Wallet
 from app.storage import Storage
-from app.util import is_cancel, money_asset, paint, parse_amount, parse_ton, valid_ton
+from app.util import clean_ton, is_cancel, money_asset, paint, parse_amount, parse_ton, valid_ton
 
 router = Router()
 
@@ -53,7 +53,7 @@ async def ask_ton(call: CallbackQuery, state: FSMContext, lang: str, theme: Them
 async def save_ton(message: Message, state: FSMContext, db: Storage, lang: str, theme: Theme):
     if is_cancel(message.text or ""):
         return
-    address = (message.text or "").strip()
+    address = clean_ton(message.text or "")
     if not valid_ton(address):
         await message.answer(t(lang, "req_bad"))
         return
@@ -159,7 +159,7 @@ async def withdraw_amount(message: Message, state: FSMContext, db: Storage, lang
             await message.answer(t(lang, "withdraw_low"))
         await state.clear()
         return
-    dest = (user["ton_address"] or "").strip()
+    dest = clean_ton(user["ton_address"] or "")
     await state.update_data(amount=amount, asset=asset)
     if dest and valid_ton(dest):
         await _place_withdraw(message, state, db, lang, settings, theme, dest)
@@ -172,7 +172,7 @@ async def withdraw_amount(message: Message, state: FSMContext, db: Storage, lang
 async def withdraw_ton_addr(message: Message, state: FSMContext, db: Storage, lang: str, settings: Settings, theme: Theme):
     if is_cancel(message.text or ""):
         return
-    address = (message.text or "").strip()
+    address = clean_ton(message.text or "")
     if not valid_ton(address):
         await message.answer(t(lang, "req_bad"))
         return
@@ -186,6 +186,11 @@ async def _place_withdraw(message: Message, state: FSMContext, db: Storage, lang
     amount = float(data.get("amount") or 0)
     if amount <= 0:
         await message.answer(t(lang, "error"))
+        await state.clear()
+        return
+    dest = clean_ton(dest)
+    if not valid_ton(dest):
+        await message.answer(t(lang, "req_bad"))
         await state.clear()
         return
     try:
@@ -208,3 +213,20 @@ async def _place_withdraw(message: Message, state: FSMContext, db: Storage, lang
         t(lang, "withdraw_ok", id=wid, amount=money_asset(amount, asset), currency=asset, details=dest),
         reply_markup=await home_kb(db, message.from_user.id, lang, theme),
     )
+    user = await db.get_user(message.from_user.id)
+    uname = (user["username"] if user else None) or str(message.from_user.id)
+    note = t(
+        "ru",
+        "admin_wd_new",
+        id=wid,
+        amount=money_asset(amount, asset),
+        currency=asset,
+        details=dest,
+        user=message.from_user.id,
+        username=uname,
+    )
+    for admin_id in settings.admins:
+        try:
+            await message.bot.send_message(admin_id, note, reply_markup=ticket_kb("wd", wid, "ru", theme))
+        except Exception:
+            pass

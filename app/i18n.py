@@ -143,6 +143,7 @@ RU = {
         "🛒 Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Продавец: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Сумма: <b>{amount}</b>\n"
+        "💸 Комиссия {fee}% · продавцу <b>{seller_get}</b>\n"
         "🔑 Данные: {secret}\n"
         "📝 Условия: {desc}\n"
         "📌 Статус: <b>{status}</b>"
@@ -154,6 +155,7 @@ RU = {
         "🛒 Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Продавец: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Цена: <b>{amount}</b>\n"
+        "💸 Комиссия {fee}% · продавцу <b>{seller_get}</b>\n"
         "🎁 NFT: {nft}\n"
         "🔑 Данные: {secret}\n"
         "📝 Условия: {desc}\n"
@@ -337,6 +339,7 @@ RU = {
     "admin_dep_line": "#{id} · {amount} {currency} · {comment}\nID {user}",
     "admin_deposits_log": "Последние автоматические пополнения:",
     "admin_wd_line": "#{id} · {amount} {currency} · {method}\n{details}\nID {user}",
+    "admin_wd_new": "⬆️ Новая заявка на вывод #{id}\n@{username} · ID <code>{user}</code>\n<b>{amount} {currency}</b>\n<code>{details}</code>",
     "admin_confirm": "Подтвердить",
     "admin_reject": "Отклонить",
     "admin_dep_ok": "Пополнение подтверждено.",
@@ -763,6 +766,7 @@ EN = {
         "🛒 Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Seller: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Amount: <b>{amount}</b>\n"
+        "💸 Fee {fee}% · seller gets <b>{seller_get}</b>\n"
         "🔑 Credentials: {secret}\n"
         "📝 Terms: {desc}\n"
         "📌 Status: <b>{status}</b>"
@@ -774,6 +778,7 @@ EN = {
         "🛒 Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Seller: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Price: <b>{amount}</b>\n"
+        "💸 Fee {fee}% · seller gets <b>{seller_get}</b>\n"
         "🎁 NFT: {nft}\n"
         "🔑 Credentials: {secret}\n"
         "📝 Terms: {desc}\n"
@@ -957,6 +962,7 @@ EN = {
     "admin_dep_line": "#{id} · {amount} {currency} · {comment}\nID {user}",
     "admin_deposits_log": "Latest automatic deposits:",
     "admin_wd_line": "#{id} · {amount} {currency} · {method}\n{details}\nID {user}",
+    "admin_wd_new": "⬆️ New withdrawal #{id}\n@{username} · ID <code>{user}</code>\n<b>{amount} {currency}</b>\n<code>{details}</code>",
     "admin_confirm": "Confirm",
     "admin_reject": "Reject",
     "admin_dep_ok": "Deposit confirmed.",

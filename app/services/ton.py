@@ -413,12 +413,40 @@ class TonEscrow:
         if units <= 0:
             return None
         master = (self.settings.usdt_master or USDT_MASTER).strip() or USDT_MASTER
-        builder_cls = None
-        try:
-            from tonutils.contracts.wallet import JettonTransferBuilder as builder_cls
-        except Exception:
-            builder_cls = None
         async with self._send_lock:
+            try:
+                try:
+                    from tonutils.wallet.messages import TransferJettonMessage
+
+                    tx = await self._wallet.transfer_message(
+                        TransferJettonMessage(
+                            destination=dest,
+                            jetton_master_address=master,
+                            jetton_amount=float(amount),
+                            jetton_decimals=USDT_DECIMALS,
+                            forward_payload=comment or None,
+                        )
+                    )
+                    return self._tx_id(tx)
+                except TypeError:
+                    from tonutils.wallet.messages import TransferJettonMessage
+
+                    tx = await self._wallet.transfer_message(
+                        message=TransferJettonMessage(
+                            destination=dest,
+                            jetton_master_address=master,
+                            jetton_amount=float(amount),
+                            jetton_decimals=USDT_DECIMALS,
+                            forward_payload=comment or None,
+                        )
+                    )
+                    return self._tx_id(tx)
+            except Exception:
+                log.exception("usdt TransferJettonMessage failed")
+            try:
+                from tonutils.contracts.wallet import JettonTransferBuilder as builder_cls
+            except Exception:
+                builder_cls = None
             try:
                 if builder_cls is not None:
                     tx = await self._wallet.transfer_message(
@@ -430,29 +458,29 @@ class TonEscrow:
                             amount=self._gas_nano(),
                         )
                     )
-                else:
-                    fn = getattr(self._wallet, "transfer_jetton", None)
-                    if fn is None:
-                        return None
-                    try:
-                        tx = await fn(
-                            destination=dest,
-                            jetton_master_address=master,
-                            jetton_amount=units,
-                            jetton_decimals=USDT_DECIMALS,
-                            forward_payload=comment or None,
-                        )
-                    except TypeError:
-                        tx = await fn(
-                            destination=dest,
-                            jetton_master_address=master,
-                            jetton_amount=float(amount),
-                            jetton_decimals=USDT_DECIMALS,
-                        )
+                    return self._tx_id(tx)
+                fn = getattr(self._wallet, "transfer_jetton", None)
+                if fn is None:
+                    return None
+                try:
+                    tx = await fn(
+                        destination=dest,
+                        jetton_master_address=master,
+                        jetton_amount=float(amount),
+                        jetton_decimals=USDT_DECIMALS,
+                        forward_payload=comment or None,
+                    )
+                except TypeError:
+                    tx = await fn(
+                        destination=dest,
+                        jetton_master_address=master,
+                        jetton_amount=float(amount),
+                        jetton_decimals=USDT_DECIMALS,
+                    )
+                return self._tx_id(tx)
             except Exception:
                 log.exception("usdt transfer failed")
                 return None
-        return self._tx_id(tx)
 
     async def payout(self, dest: str, amount: float, asset: str, comment: str = "") -> Optional[str]:
         if (asset or "").upper() == "TON":

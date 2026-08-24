@@ -47,8 +47,18 @@ def valid_phone(text: str) -> bool:
     return bool(_PHONE.match((text or "").strip()))
 
 
+def clean_ton(text: str) -> str:
+    raw = (text or "").strip()
+    raw = raw.replace("ton://transfer/", "")
+    raw = raw.replace("https://tonviewer.com/", "")
+    raw = raw.replace("https://tonscan.org/", "")
+    raw = raw.replace("https://ton.app/transfer/", "")
+    raw = raw.split("?")[0].split("/")[-1].strip()
+    return raw
+
+
 def valid_ton(text: str) -> bool:
-    return bool(_TON.match((text or "").strip()))
+    return bool(_TON.match(clean_ton(text)))
 
 
 def h(value) -> str:
@@ -255,6 +265,14 @@ async def render_deal(db, deal, lang: str, currency: str, escrow: str = "", view
     else:
         secret = "—"
     key = "deal_opened_nft" if is_nft_deal(deal) else "deal_opened"
+    raw_amount = float(deal["amount"] or 0) if deal["amount"] is not None else 0.0
+    fee = 2.0
+    try:
+        from app.config import get_settings
+        fee = float(get_settings().commission_percent)
+    except Exception:
+        fee = 2.0
+    seller_get = f"{money_asset(seller_payout(raw_amount, fee, asset), asset)} {asset}" if raw_amount else "—"
     return t(
         lang,
         key,
@@ -266,6 +284,8 @@ async def render_deal(db, deal, lang: str, currency: str, escrow: str = "", view
         seller=username_of(seller) if seller else "-",
         seller_id=deal["seller_id"] or "—",
         amount=amount,
+        fee=f"{fee:g}",
+        seller_get=seller_get,
         nft=nft_title(nft) if nft else t(lang, "deal_nft_none"),
         secret=secret,
         desc=h(deal["description"]) if deal["description"] else "—",

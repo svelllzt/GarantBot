@@ -425,6 +425,8 @@ async def main() -> None:
         assert t("ru", "deal_secret_hidden") in stranger
         party_text = await render_deal(db, opened_e, "ru", "USDT", viewer_id=2)
         assert "login:pass" in party_text
+        assert "Комиссия" in party_text
+        assert "продавцу" in party_text
         await db.touch_deal(offer_e, status=DEAL_CANCELLED)
         await db.unfreeze_asset(2, "USDT", 2)
         await db.set_nft_status(nft_e, NFT_AVAILABLE, deal_id=None)
@@ -469,6 +471,19 @@ async def main() -> None:
 
         wd_cols = await db._columns("withdrawals")
         assert "tx_hash" in wd_cols
+        from app.handlers import profile as ph
+        from app.keyboards import asset_pick_kb
+        from app.util import clean_ton, valid_ton
+        assert ph.asset_pick_kb is asset_pick_kb
+        wd_kb = asset_pick_kb("ru", theme, "wasset")
+        wd_cbs = [btn.callback_data or "" for row in wd_kb.inline_keyboard for btn in row]
+        assert any("wasset" in cb and "USDT" in cb for cb in wd_cbs)
+        assert any("wasset" in cb and "TON" in cb for cb in wd_cbs)
+        sample = "UQ" + ("A" * 46)
+        assert valid_ton(sample)
+        assert clean_ton("https://tonviewer.com/" + sample + "?utm=1") == sample
+        assert abs(seller_payout(100, 2, "USDT") - 98) < 1e-9
+        assert abs(seller_payout(10, 2, "TON") - 9.8) < 1e-9
         from app.services.ton import TonEscrow
         addr = "UQ" + ("A" * 46)
         first_wd = await db.create_withdraw(2, 3, "ton", addr, "USDT")
