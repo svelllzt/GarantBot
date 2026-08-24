@@ -6,7 +6,7 @@ from pathlib import Path
 from app.i18n import EN, RU
 from app.services.ton import ton_to_currency
 from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_LISTED, DEAL_OPEN, DEAL_PENDING, NFT_AVAILABLE, NFT_LOCKED, NFT_TRANSFERRED, WALLET_DONE, WALLET_SENDING, Storage
-from app.util import seller_payout, listing_is_buy
+from app.util import seller_payout, service_fee, listing_is_buy
 
 
 async def main() -> None:
@@ -376,6 +376,30 @@ async def main() -> None:
         assert abs(db.available(seller4, "TON") - payout_ton) < 1e-9
         await db.touch_deal(acc_id, status=DEAL_CLOSED)
 
+        await db.upsert_user(21, "sel21", "Прод21")
+        await db.upsert_user(22, "buy22", "Пок22")
+        await db.upsert_user(90, "cashier", "Касса")
+        await db.credit_asset(22, "USDT", 10)
+        fee_lid = await dsvc.create_listing(db, 21, "goods", "Fee item", 10, "x", currency="USDT")
+        await dsvc.take_listing(db, fee_lid, 22)
+        fee_vals = dict(DEFAULTS)
+        fee_vals["service_id"] = 90
+        fee_vals["commission_percent"] = 2.0
+        fee_settings = Settings(fee_vals, Path("config.ini"))
+        fee_payout = await dsvc.complete(db, fee_settings, fee_lid, 22)
+        assert abs(fee_payout - seller_payout(10, 2, "USDT")) < 1e-9
+        seller21 = await db.get_user(21)
+        buyer22 = await db.get_user(22)
+        svc90 = await db.get_user(90)
+        assert abs(db.available(seller21, "USDT") - seller_payout(10, 2, "USDT")) < 1e-9
+        assert abs(db.available(buyer22, "USDT")) < 1e-9
+        assert abs(db.frozen_of(buyer22, "USDT")) < 1e-9
+        assert svc90 is not None
+        assert svc90["nick"] == "Касса"
+        assert svc90["username"] == "cashier"
+        assert abs(db.available(svc90, "USDT") - service_fee(10, 2, "USDT")) < 1e-9
+        await db.touch_deal(fee_lid, status=DEAL_CLOSED)
+
         nft_d = await db.add_nft(1, gift_id="g5", slug="giftd", title="D", num=5, msg_id=102, from_user_id=1, is_unique=True)
         offer = await dsvc.open_offer(db, 1, 2, category="nft", title="GiftD", nft_id=nft_d, amount=3, currency="USDT")
         assert (await db.get_nft(nft_d))["status"] == NFT_LOCKED
@@ -484,6 +508,14 @@ async def main() -> None:
         assert clean_ton("https://tonviewer.com/" + sample + "?utm=1") == sample
         assert abs(seller_payout(100, 2, "USDT") - 98) < 1e-9
         assert abs(seller_payout(10, 2, "TON") - 9.8) < 1e-9
+        assert abs(service_fee(100, 2, "USDT") - 2) < 1e-9
+        assert abs(service_fee(10, 2, "TON") - 0.2) < 1e-9
+        uid_vals = dict(DEFAULTS)
+        uid_vals["admin_ids"] = "5,3"
+        uid_vals["service_id"] = 0
+        assert Settings(uid_vals, Path("config.ini")).service_uid() == 3
+        uid_vals["service_id"] = 9
+        assert Settings(uid_vals, Path("config.ini")).service_uid() == 9
         from app.services.ton import TonEscrow
         addr = "UQ" + ("A" * 46)
         first_wd = await db.create_withdraw(2, 3, "ton", addr, "USDT")

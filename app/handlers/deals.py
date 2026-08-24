@@ -50,6 +50,7 @@ from app.util import (
     parse_ton,
     paint,
     render_deal,
+    service_fee,
     username_of,
     h,
 )
@@ -78,6 +79,30 @@ async def _show_deal(bot, db: Storage, deal, user_id: int, lang: str, settings: 
     from app.media import send_screen
 
     await send_screen(bot, user_id, text, markup, screen, settings)
+
+
+async def notify_service_fee(bot, db: Storage, settings: Settings, deal) -> None:
+    amount = float(deal["amount"] or 0)
+    asset = deal_asset(deal)
+    fee = service_fee(amount, settings.commission_percent, asset)
+    sid = settings.service_uid()
+    if fee <= 0 or not sid:
+        return
+    user = await db.get_user(sid)
+    user_lang = (user["lang"] if user else None) or "ru"
+    try:
+        await bot.send_message(
+            sid,
+            t(
+                user_lang,
+                "deal_fee_service",
+                id=deal["id"],
+                amount=money_asset(fee, asset),
+                currency=asset,
+            ),
+        )
+    except Exception:
+        pass
 
 
 async def _send_manual(bot, user_id: int, lang: str, deal, *, buyer_only: bool = True, as_buyer: bool | None = None) -> None:
@@ -880,6 +905,7 @@ async def confirm_go(
         )
     except Exception:
         pass
+    await notify_service_fee(call.bot, db, settings, deal)
 
 
 @router.message(DealFlow.review)

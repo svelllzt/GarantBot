@@ -19,6 +19,7 @@ FIELDS: dict[tuple[str, str], str] = {
     ("bot", "support_username"): "support_username",
     ("bot", "support_chat"): "support_chat",
     ("bot", "commission_percent"): "commission_percent",
+    ("bot", "service_id"): "service_id",
     ("bot", "currency"): "currency",
     ("bot", "min_deposit"): "min_deposit",
     ("bot", "min_withdraw"): "min_withdraw",
@@ -58,6 +59,7 @@ DEFAULTS: dict[str, Any] = {
     "support_username": "support",
     "support_chat": "",
     "commission_percent": 2.0,
+    "service_id": 0,
     "currency": "USDT",
     "min_deposit": 5.0,
     "min_withdraw": 10.0,
@@ -95,6 +97,7 @@ ENV_TO_ATTR = {
     "SUPPORT_USERNAME": "support_username",
     "SUPPORT_CHAT": "support_chat",
     "COMMISSION_PERCENT": "commission_percent",
+    "SERVICE_ID": "service_id",
     "CURRENCY": "currency",
     "DEALS_CHANNEL": "deals_channel",
     "ASSETS": "assets_dir",
@@ -343,6 +346,7 @@ class Settings:
     support_username: str
     support_chat: str
     commission_percent: float
+    service_id: int
     currency: str
     min_deposit: float
     min_withdraw: float
@@ -392,6 +396,13 @@ class Settings:
 
     def is_admin(self, user_id: int) -> bool:
         return user_id in self.admins
+
+    def service_uid(self) -> int:
+        sid = int(getattr(self, "service_id", 0) or 0)
+        if sid > 0:
+            return sid
+        ids = sorted(self.admins)
+        return ids[0] if ids else 0
 
     def patch(self, attr: str, value: Any) -> None:
         if attr not in ATTR_TO_INI:

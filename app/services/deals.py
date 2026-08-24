@@ -17,7 +17,7 @@ from app.storage import (
     NFT_TRANSFERRED,
     Storage,
 )
-from app.util import deal_asset, deal_creator, is_nft_deal, listing_is_buy, listing_owner, nft_title, seller_payout
+from app.util import deal_asset, deal_creator, is_nft_deal, listing_is_buy, listing_owner, nft_title, seller_payout, service_fee
 
 
 class DealError(Exception):
@@ -68,13 +68,29 @@ async def _release_nft(db: Storage, deal) -> None:
         await db.set_nft_status(deal["nft_id"], NFT_AVAILABLE, deal_id=None)
 
 
+async def _pay_service(db: Storage, settings: Settings, asset: str, fee: float) -> None:
+    if fee <= 0:
+        return
+    sid = settings.service_uid()
+    if not sid:
+        return
+    if await db.get_user(sid) is None:
+        await db.upsert_user(sid, None, "service")
+    await db.credit_asset(sid, asset, fee)
+
+
 async def _capture_and_pay(db: Storage, settings: Settings, deal) -> float:
     amount = float(deal["amount"] or 0)
     asset = deal_asset(deal)
     payout = seller_payout(amount, settings.commission_percent, asset)
+    fee = service_fee(amount, settings.commission_percent, asset)
     await db.capture_asset(deal["buyer_id"], asset, amount)
     try:
         await db.credit_asset(deal["seller_id"], asset, payout)
+        try:
+            await _pay_service(db, settings, asset, fee)
+        except Exception:
+            pass
     except Exception:
         await db.credit_asset(deal["buyer_id"], asset, amount)
         try:

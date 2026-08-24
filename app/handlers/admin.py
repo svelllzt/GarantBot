@@ -44,6 +44,7 @@ _wd_locks: dict[int, asyncio.Lock] = {}
 
 
 WALLET_FIELDS = (
+    "service_id",
     "ton_address",
     "ton_mnemonic",
     "ton_api_key",
@@ -211,6 +212,7 @@ async def stats(call: CallbackQuery, db: Storage, lang: str, settings: Settings,
         stars_s = f"{stars_n}★"
         left = str(stars_n // fee) if fee else "—"
     pending_nft = len(await db.pending_nft_sends())
+    svc_user = await db.get_user(settings.service_uid()) if settings.service_uid() else None
     await paint(
         call,
         t(
@@ -230,6 +232,9 @@ async def stats(call: CallbackQuery, db: Storage, lang: str, settings: Settings,
             fee=fee,
             nft_left=left,
             pending_nft=pending_nft,
+            svc_id=settings.service_uid() or "—",
+            svc_usdt=money_asset(db.available(svc_user, "USDT") if svc_user else 0, "USDT"),
+            svc_ton=money_asset(db.available(svc_user, "TON") if svc_user else 0, "TON"),
             by_status="\n".join(status_lines) or "—",
             by_cat="\n".join(cat_lines) or "—",
             recent="\n".join(recent_lines) or "—",
@@ -513,6 +518,8 @@ async def win_seller(call: CallbackQuery, callback_data: AdminCB, db: Storage, l
             )
         except Exception:
             pass
+    from app.handlers.deals import notify_service_fee
+    await notify_service_fee(call.bot, db, settings, deal)
 
 
 @router.callback_query(AdminCB.filter(F.a == "deps"))

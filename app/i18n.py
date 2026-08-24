@@ -94,9 +94,9 @@ RU = {
         "Безопасные сделки в TON и USDT: аккаунты, NFT-подарки, товар.\n\n"
         "• Пополнение TON или USDT через сеть TON — зачисляется само по memo\n"
         "• Когда сделка стартует, сумма замораживается и вывести её нельзя\n"
-        "• Покупатель подтверждает получение — продавец получает монеты минус комиссия\n"
+        "• Покупатель подтверждает получение — продавцу на баланс идёт сумма минус комиссия, комиссия зачисляется сервису\n"
         "• Любая сторона может открыть спор, решение принимает администратор\n\n"
-        "💸 Комиссия: <b>{commission}%</b> с продавца\n"
+        "💸 Комиссия: <b>{commission}%</b> с продавца, уходит на баланс сервиса\n"
         "💬 Поддержка: @{support}\n"
         "{chat}"
     ),
@@ -258,6 +258,7 @@ RU = {
     "deal_confirm_ask": "Подтверждаете получение и валидность товара?",
     "deal_done_buyer": "Сделка закрыта. Можете оставить отзыв продавцу.",
     "deal_done_seller": "Сделка закрыта. На баланс зачислено {amount} {currency} (комиссия {commission}%).",
+    "deal_fee_service": "💼 Комиссия сделки #{id}: +{amount} {currency} на баланс сервиса.",
     "deal_review_ask": "Напишите отзыв или нажмите «Пропустить».",
     "deal_review_skip": "Пропустить",
     "deal_review_saved": "Отзыв сохранён.",
@@ -554,7 +555,8 @@ RU = {
         "Закрыто: {closed}\n"
         "Открытых споров: {disputes}\n"
         "Оборот закрытых: {volume} {currency}\n"
-        "Сейчас в гаранте: {escrow} {currency}\n\n"
+        "Сейчас в гаранте: {escrow} {currency}\n"
+        "Комиссия сервиса (ID {svc_id}): {svc_usdt} USDT / {svc_ton} TON\n\n"
         "Банк: {bank}\n"
         "Stars: {stars}\n"
         "Fragment: {fragment}\n"
@@ -595,6 +597,7 @@ RU = {
     "admin_sessions": "Сессии",
     "admin_admins": "Админы",
     "admin_adm_add": "Добавить админа",
+    "admin_cfg_service_id": "ID сервиса (комиссия сделок)",
     "admin_cfg_ton_address": "TON-адрес эскроу",
     "admin_cfg_ton_mnemonic": "Мнемоника TON",
     "admin_cfg_ton_api_key": "TON API-ключ",
@@ -717,9 +720,9 @@ EN = {
         "Safe P2P deals in TON and USDT: accounts, NFT gifts, goods.\n\n"
         "• Deposit TON or USDT via the TON network — credited automatically by memo\n"
         "• When a deal starts the amount is frozen and cannot be withdrawn\n"
-        "• The buyer confirms receipt — the seller is paid minus the fee\n"
+        "• The buyer confirms receipt — the seller is credited minus the fee, the fee goes to the service balance\n"
         "• Either side can open a dispute; an admin decides\n\n"
-        "💸 Fee: <b>{commission}%</b> from the seller\n"
+        "💸 Fee: <b>{commission}%</b> from the seller, credited to the service\n"
         "💬 Support: @{support}\n"
         "{chat}"
     ),
@@ -881,6 +884,7 @@ EN = {
     "deal_confirm_ask": "Confirm that you received a valid item?",
     "deal_done_buyer": "Deal closed. You can leave a review for the seller.",
     "deal_done_seller": "Deal closed. Credited {amount} {currency} (fee {commission}%).",
+    "deal_fee_service": "💼 Deal #{id} fee: +{amount} {currency} credited to the service.",
     "deal_review_ask": "Write a review or tap Skip.",
     "deal_review_skip": "Skip",
     "deal_review_saved": "Review saved.",
@@ -1162,7 +1166,8 @@ EN = {
         "Closed: {closed}\n"
         "Open disputes: {disputes}\n"
         "Closed volume: {volume} {currency}\n"
-        "In escrow now: {escrow} {currency}\n\n"
+        "In escrow now: {escrow} {currency}\n"
+        "Service fees (ID {svc_id}): {svc_usdt} USDT / {svc_ton} TON\n\n"
         "Bank: {bank}\n"
         "Stars: {stars}\n"
         "Fragment: {fragment}\n"
@@ -1203,6 +1208,7 @@ EN = {
     "admin_sessions": "Sessions",
     "admin_admins": "Admins",
     "admin_adm_add": "Add admin",
+    "admin_cfg_service_id": "Service account ID (deal fees)",
     "admin_cfg_ton_address": "TON escrow address",
     "admin_cfg_ton_mnemonic": "TON mnemonic",
     "admin_cfg_ton_api_key": "TON API key",

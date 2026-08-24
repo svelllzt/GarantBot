@@ -14,7 +14,10 @@ support_chat =
 deals_channel =
 ; Картинки экранов: assets/menu.jpg, profile.jpg, deal.jpg… См. assets/README.txt
 assets = assets
+; Комиссия сделок, % с продавца. Падает на баланс service_id (пусто — первый admin_ids).
 commission_percent = 2
+; Telegram ID, куда зачислять комиссию. С этого баланса её выводят как обычные USDT/TON.
+service_id =
 currency = USDT
 min_deposit = 5
 min_withdraw = 10

@@ -95,6 +95,14 @@ def seller_payout(amount: float, commission: float, asset: str = "USDT") -> floa
     return round(raw, 6)
 
 
+def service_fee(amount: float, commission: float, asset: str = "USDT") -> float:
+    payout = seller_payout(amount, commission, asset)
+    raw = max(float(amount) - payout, 0)
+    if (asset or "").upper() == "TON":
+        return round(raw, 9)
+    return round(raw, 6)
+
+
 def money_ton(value) -> str:
     if value is None:
         return "—"
