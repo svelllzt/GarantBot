@@ -333,6 +333,7 @@ def admin_kb(lang: str, theme: Theme) -> InlineKeyboardMarkup:
     theme.add(kb, "admin_screens", lang, callback_data=AdminCB(a="scr").pack())
     theme.add(kb, "admin_balance", lang, callback_data=AdminCB(a="bal").pack())
     theme.add(kb, "admin_mail", lang, callback_data=AdminCB(a="mail").pack())
+    theme.add(kb, "admin_settings", lang, callback_data=AdminCB(a="set").pack())
     theme.add(kb, "admin_wallets", lang, callback_data=AdminCB(a="wal").pack())
     theme.add(kb, "admin_sessions", lang, callback_data=AdminCB(a="sess").pack())
     theme.add(kb, "admin_admins", lang, callback_data=AdminCB(a="adms").pack())

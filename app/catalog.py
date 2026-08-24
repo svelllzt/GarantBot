@@ -170,14 +170,14 @@ _MANUAL = {
             "2. Способ передачи и проверку фиксируйте в условиях до старта.\n"
             "3. Не подтверждайте, пока товар у вас и вы его проверили.\n"
             "4. Если продавец пропал или товар не тот — спор.\n"
-            "5. После подтверждения монеты уходят продавцу за вычетом комиссии. Откатить нельзя."
+            "5. После подтверждения монеты уходят продавцу. Комиссию доплачивает покупатель. Откатить нельзя."
         ),
         "en": (
             "1. Funds stay frozen in escrow until you tap «Goods received». They cannot be withdrawn.\n"
             "2. Write delivery terms before the deal starts.\n"
             "3. Do not confirm until you have checked the item.\n"
             "4. If something is wrong, open a dispute.\n"
-            "5. After confirmation the seller is paid minus the fee. This cannot be undone."
+            "5. After confirmation the seller is paid the full price. The buyer pays the fee on top. This cannot be undone."
         ),
     },
     "other": {
@@ -185,13 +185,13 @@ _MANUAL = {
             "1. Оплата через баланс бота. Гарант держит сумму замороженной до подтверждения.\n"
             "2. Опишите, что передаёте, и как проверите факт передачи.\n"
             "3. Не подтверждайте до проверки. Сомнения — спор.\n"
-            "4. Комиссия снимается с продавца при закрытии."
+            "4. Комиссию доплачивает покупатель при закрытии."
         ),
         "en": (
             "1. Pay via the bot balance. Escrow freezes funds until confirmation.\n"
             "2. Write what is transferred and how you will verify it.\n"
             "3. Do not confirm early. Use a dispute if needed.\n"
-            "4. The fee is taken from the seller on close."
+            "4. The fee is paid by the buyer on close."
         ),
     },
 }

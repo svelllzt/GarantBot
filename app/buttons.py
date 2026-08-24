@@ -77,6 +77,7 @@ KEYS = [
     "admin_screens",
     "admin_balance",
     "admin_mail",
+    "admin_settings",
     "admin_wallets",
     "admin_sessions",
     "admin_admins",
@@ -92,6 +93,8 @@ KEYS = [
     "admin_faq_del",
     "admin_faq_photo",
     "admin_reply",
+    "sub_open",
+    "sub_check",
 ]
 
 DEFAULT_STYLE = {
@@ -169,6 +172,7 @@ DEFAULT_STYLE = {
     "admin_screens": "primary",
     "admin_balance": "primary",
     "admin_mail": "primary",
+    "admin_settings": "primary",
     "admin_wallets": "success",
     "admin_sessions": "primary",
     "admin_admins": "danger",
@@ -184,6 +188,8 @@ DEFAULT_STYLE = {
     "admin_buyer": "success",
     "admin_seller": "primary",
     "admin_buttons": "primary",
+    "sub_open": "success",
+    "sub_check": "success",
 }
 
 EMOJI = {
@@ -261,6 +267,7 @@ EMOJI = {
     "admin_screens": "🖼",
     "admin_balance": "💰",
     "admin_mail": "📣",
+    "admin_settings": "⚙️",
     "admin_wallets": "💎",
     "admin_sessions": "🔐",
     "admin_admins": "👑",
@@ -276,6 +283,8 @@ EMOJI = {
     "admin_reply": "✉️",
     "admin_write_seller": "💼",
     "admin_write_buyer": "🛒",
+    "sub_open": "📢",
+    "sub_check": "✅",
 }
 
 STYLES = ("primary", "success", "danger")

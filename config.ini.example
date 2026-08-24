@@ -12,9 +12,11 @@ support_username = support
 support_chat =
 ; Канал объявлений: @name или -100id. Бот должен быть админом с правом писать.
 deals_channel =
+; Канал обязательной подписки: @name или -100id. Пусто — проверка выключена. Бот должен быть админом канала.
+required_channel =
 ; Картинки экранов: assets/menu.jpg, profile.jpg, deal.jpg… См. assets/README.txt
 assets = assets
-; Комиссия сделок, % с продавца. Падает на баланс service_id (пусто — первый admin_ids).
+; Комиссия сделок, % с покупателя (поверх цены). Падает на баланс service_id (пусто — первый admin_ids).
 commission_percent = 2
 ; Telegram ID, куда зачислять комиссию. С этого баланса её выводят как обычные USDT/TON.
 service_id =

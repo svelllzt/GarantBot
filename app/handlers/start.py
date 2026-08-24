@@ -9,6 +9,7 @@ from app.config import Settings
 from app.handlers.deals import present_start_deal
 from app.i18n import t
 from app.keyboards import LangCB, NavCB, FaqCB, faq_item_kb, faq_user_kb, home_kb, lang_kb, profile_kb
+from app.services import channel as ch
 from app.storage import Storage
 from app.util import is_cancel, paint, profile_text
 
@@ -23,6 +24,10 @@ async def show_menu(event: Message | CallbackQuery, db: Storage, lang: str, them
 async def _after_start(event, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings, ton):
     data = await state.get_data()
     payload = data.get("start_payload")
+    bot = event.bot
+    if not await ch.is_subscribed(bot, settings, event.from_user.id):
+        await ch.send_sub_gate(event, lang, settings, bot=bot)
+        return
     if payload:
         await state.update_data(start_payload=None)
         if await present_start_deal(event, db, lang, settings, theme, ton, payload):
@@ -74,6 +79,18 @@ async def cmd_start(
 async def set_lang(call: CallbackQuery, callback_data: LangCB, state: FSMContext, db: Storage, theme: Theme, settings: Settings, ton):
     lang = callback_data.code
     await db.set_lang(call.from_user.id, lang)
+    await _after_start(call, state, db, lang, theme, settings, ton)
+
+
+@router.callback_query(NavCB.filter(F.a == "subchk"))
+async def sub_check(call: CallbackQuery, state: FSMContext, db: Storage, lang: str, theme: Theme, settings: Settings, ton):
+    bot = call.bot
+    ch.forget_sub(call.from_user.id)
+    if not await ch.is_subscribed(bot, settings, call.from_user.id):
+        await call.answer(t(lang, "sub_fail"), show_alert=True)
+        await ch.send_sub_gate(call, lang, settings, bot=bot)
+        return
+    await call.answer(t(lang, "sub_ok"))
     await _after_start(call, state, db, lang, theme, settings, ton)
 
 

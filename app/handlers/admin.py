@@ -44,7 +44,6 @@ _wd_locks: dict[int, asyncio.Lock] = {}
 
 
 WALLET_FIELDS = (
-    "service_id",
     "ton_address",
     "ton_mnemonic",
     "ton_api_key",
@@ -59,6 +58,28 @@ SESSION_FIELDS = (
     "bank_session",
     "bank_username",
     "fragment_cookies",
+)
+BOT_FIELDS = (
+    "support_username",
+    "support_chat",
+    "required_channel",
+    "deals_channel",
+    "commission_percent",
+    "service_id",
+    "currency",
+    "min_deposit",
+    "min_withdraw",
+    "min_deposit_ton",
+    "min_withdraw_ton",
+    "min_ton_deal",
+    "min_rub_deal",
+    "ton_rate",
+    "ton_network",
+    "ton_gas",
+    "bank_transfer_stars",
+    "bank_min_stars",
+    "fragment_stars",
+    "fragment_provider",
 )
 SECRET_FIELDS = {
     "ton_mnemonic",
@@ -80,7 +101,7 @@ BANK_RELOAD = {
     "bank_session",
     "bank_username",
 }
-CFG_FIELDS = set(WALLET_FIELDS) | set(SESSION_FIELDS)
+CFG_FIELDS = set(WALLET_FIELDS) | set(SESSION_FIELDS) | set(BOT_FIELDS)
 
 
 def _ticket_asset(row) -> str:
@@ -142,6 +163,10 @@ def _wallets_text(settings: Settings, lang: str) -> str:
 
 def _sessions_text(settings: Settings, lang: str) -> str:
     return t(lang, "admin_cfg_sessions_text", lines=_cfg_lines(settings, lang, SESSION_FIELDS))
+
+
+def _bot_text(settings: Settings, lang: str) -> str:
+    return t(lang, "admin_cfg_bot_text", lines=_cfg_lines(settings, lang, BOT_FIELDS))
 
 
 def _admins_text(settings: Settings, lang: str) -> str:
@@ -471,7 +496,7 @@ async def win_buyer(call: CallbackQuery, callback_data: AdminCB, db: Storage, la
     if await _deny(call, lang, settings):
         return
     try:
-        await svc.verdict_buyer(db, callback_data.i, ton)
+        await svc.verdict_buyer(db, callback_data.i, ton, settings=settings)
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
@@ -745,6 +770,13 @@ async def admin_home(call: CallbackQuery, lang: str, settings: Settings, theme: 
     await paint(call, t(lang, "admin_menu"), admin_kb(lang, theme), settings=settings)
 
 
+@router.callback_query(AdminCB.filter(F.a == "set"))
+async def admin_bot_settings(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
+    if await _deny(call, lang, settings):
+        return
+    await paint(call, _bot_text(settings, lang), cfg_fields_kb(lang, theme, list(BOT_FIELDS)), settings=settings)
+
+
 @router.callback_query(AdminCB.filter(F.a == "wal"))
 async def admin_wallets(call: CallbackQuery, lang: str, settings: Settings, theme: Theme):
     if await _deny(call, lang, settings):
@@ -813,11 +845,25 @@ async def admin_cfg_save(
     value = (message.text or "").strip()
     if value.lower() in {"-", "—", "none", "null", "empty"}:
         value = ""
+    if field == "commission_percent":
+        try:
+            pct = float((value or "0").replace(",", "."))
+        except ValueError:
+            await message.answer(t(lang, "req_bad"))
+            return
+        if pct < 0 or pct > 50:
+            await message.answer(t(lang, "req_bad"))
+            return
+        value = str(pct)
     try:
         settings.patch(field, value)
     except Exception:
         await message.answer(t(lang, "req_bad"))
         return
+    if field == "required_channel":
+        from app.services.channel import forget_sub
+
+        forget_sub()
     await state.clear()
     note = t(lang, "admin_cfg_saved", key=t(lang, f"admin_cfg_{field}"))
     svc_name = ""
@@ -833,8 +879,15 @@ async def admin_cfg_save(
             note += "\n" + t(lang, "admin_cfg_reconnect", svc=svc_name)
     except Exception:
         note += "\n" + t(lang, "admin_cfg_reconnect_fail", svc=svc_name or "service")
-    kind = WALLET_FIELDS if field in WALLET_FIELDS else SESSION_FIELDS
-    text = _wallets_text(settings, lang) if field in WALLET_FIELDS else _sessions_text(settings, lang)
+    if field in WALLET_FIELDS:
+        kind = WALLET_FIELDS
+        text = _wallets_text(settings, lang)
+    elif field in SESSION_FIELDS:
+        kind = SESSION_FIELDS
+        text = _sessions_text(settings, lang)
+    else:
+        kind = BOT_FIELDS
+        text = _bot_text(settings, lang)
     await message.answer(note + "\n\n" + text, reply_markup=cfg_fields_kb(lang, theme, list(kind)))
 
 

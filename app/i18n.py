@@ -94,9 +94,9 @@ RU = {
         "Безопасные сделки в TON и USDT: аккаунты, NFT-подарки, товар.\n\n"
         "• Пополнение TON или USDT через сеть TON — зачисляется само по memo\n"
         "• Когда сделка стартует, сумма замораживается и вывести её нельзя\n"
-        "• Покупатель подтверждает получение — продавцу на баланс идёт сумма минус комиссия, комиссия зачисляется сервису\n"
+        "• Покупатель подтверждает получение — продавцу на баланс идёт полная сумма, комиссию доплачивает покупатель и она зачисляется сервису\n"
         "• Любая сторона может открыть спор, решение принимает администратор\n\n"
-        "💸 Комиссия: <b>{commission}%</b> с продавца, уходит на баланс сервиса\n"
+        "💸 Комиссия: <b>{commission}%</b> с покупателя, уходит на баланс сервиса\n"
         "💬 Поддержка: @{support}\n"
         "{chat}"
     ),
@@ -143,7 +143,7 @@ RU = {
         "🛒 Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Продавец: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Сумма: <b>{amount}</b>\n"
-        "💸 Комиссия {fee}% · продавцу <b>{seller_get}</b>\n"
+        "💸 Комиссия {fee}% с покупателя · к оплате <b>{buyer_pay}</b>\n"
         "🔑 Данные: {secret}\n"
         "📝 Условия: {desc}\n"
         "📌 Статус: <b>{status}</b>"
@@ -155,7 +155,7 @@ RU = {
         "🛒 Покупатель: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Продавец: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Цена: <b>{amount}</b>\n"
-        "💸 Комиссия {fee}% · продавцу <b>{seller_get}</b>\n"
+        "💸 Комиссия {fee}% с покупателя · к оплате <b>{buyer_pay}</b>\n"
         "🎁 NFT: {nft}\n"
         "🔑 Данные: {secret}\n"
         "📝 Условия: {desc}\n"
@@ -257,7 +257,7 @@ RU = {
     "deal_nft_retry_ok": "NFT по сделке #{id} отправлен: {title}.",
     "deal_confirm_ask": "Подтверждаете получение и валидность товара?",
     "deal_done_buyer": "Сделка закрыта. Можете оставить отзыв продавцу.",
-    "deal_done_seller": "Сделка закрыта. На баланс зачислено {amount} {currency} (комиссия {commission}%).",
+    "deal_done_seller": "Сделка закрыта. На баланс зачислено {amount} {currency}.",
     "deal_fee_service": "💼 Комиссия сделки #{id}: +{amount} {currency} на баланс сервиса.",
     "deal_review_ask": "Напишите отзыв или нажмите «Пропустить».",
     "deal_review_skip": "Пропустить",
@@ -414,7 +414,7 @@ RU = {
     "deal_feed_title": "🛒 <b>Витрина</b>",
     "deal_feed_line": "#{id} · {cat} · {amount}\n{title}\nпродаёт · @{seller}",
     "deal_feed_line_buy": "#{id} · {cat} · {amount}\n{title}\nкупит · @{buyer}",
-    "deal_need_deposit": "⬇️ Сначала пополните баланс в профиле, затем откройте сделку.",
+    "deal_need_deposit": "⬇️ Сначала пополните баланс в профиле (цена + комиссия), затем откройте сделку.",
     "deal_need_price": "⚠️ У объявления должна быть сумма больше нуля.",
     "nft_need_gift": "🎁 Сначала закиньте NFT на банк и выберите его. Без подарка в инвентаре сделку открыть нельзя.",
     "channel_listing": (
@@ -594,10 +594,30 @@ RU = {
     "withdraw_pick": "⬆️ <b>Какой актив вывести?</b>\n\nВывод только на TON-адрес. Замороженные в сделке монеты недоступны.",
     "withdraw_frozen": "⚠️ Доступно {have} {currency}, ещё {frozen} заморожено в сделке. Замороженное вывести нельзя.",
     "admin_wallets": "Кошельки",
+    "admin_settings": "Настройки",
     "admin_sessions": "Сессии",
     "admin_admins": "Админы",
     "admin_adm_add": "Добавить админа",
+    "admin_cfg_support_username": "Username поддержки",
+    "admin_cfg_support_chat": "Чат поддержки",
+    "admin_cfg_required_channel": "Канал обязательной подписки",
+    "admin_cfg_deals_channel": "Канал объявлений",
+    "admin_cfg_commission_percent": "Комиссия сделок, %",
     "admin_cfg_service_id": "ID сервиса (комиссия сделок)",
+    "admin_cfg_currency": "Валюта по умолчанию",
+    "admin_cfg_min_deposit": "Мин. депозит USDT",
+    "admin_cfg_min_withdraw": "Мин. вывод USDT",
+    "admin_cfg_min_deposit_ton": "Мин. депозит TON",
+    "admin_cfg_min_withdraw_ton": "Мин. вывод TON",
+    "admin_cfg_min_ton_deal": "Мин. сделка TON",
+    "admin_cfg_min_rub_deal": "Мин. сделка ₽",
+    "admin_cfg_ton_rate": "Курс TON",
+    "admin_cfg_ton_network": "Сеть TON",
+    "admin_cfg_ton_gas": "Газ TON",
+    "admin_cfg_bank_transfer_stars": "Stars за передачу NFT",
+    "admin_cfg_bank_min_stars": "Мин. запас Stars",
+    "admin_cfg_fragment_stars": "Пачка Stars (Fragment)",
+    "admin_cfg_fragment_provider": "Провайдер Fragment",
     "admin_cfg_ton_address": "TON-адрес эскроу",
     "admin_cfg_ton_mnemonic": "Мнемоника TON",
     "admin_cfg_ton_api_key": "TON API-ключ",
@@ -615,6 +635,7 @@ RU = {
     "admin_cfg_reconnect": "Переподключил сервис: {svc}",
     "admin_cfg_reconnect_fail": "⚠️ Сохранено, но {svc} не переподключился. Проверьте значение.",
     "admin_cfg_wallets_text": "💎 <b>Кошельки</b>\n\n{lines}\n\nНажмите поле, чтобы заменить значение.",
+    "admin_cfg_bot_text": "⚙️ <b>Настройки бота</b>\n\n{lines}\n\nНажмите поле, чтобы заменить значение.",
     "admin_cfg_sessions_text": "🔐 <b>Сессии</b>\n\n{lines}\n\nНажмите поле, чтобы заменить значение.",
     "admin_cfg_admins_text": "👑 <b>Админы</b>\n\n{lines}\n\nДобавьте ID или @username. Нельзя удалить последнего админа.",
     "admin_adm_ask": "Пришлите Telegram ID или @username нового админа.",
@@ -624,6 +645,11 @@ RU = {
     "admin_adm_self": "⚠️ Нельзя удалить себя.",
     "admin_adm_exists": "⚠️ Этот пользователь уже админ.",
     "admin_cfg_value": "{title}\n<code>{value}</code>",
+    "sub_need": "📢 <b>Подпишитесь на канал</b>\n\nБез подписки бот недоступен. Откройте канал и нажмите «Проверить».",
+    "sub_open": "Открыть канал",
+    "sub_check": "Проверить",
+    "sub_ok": "✅ Подписка есть",
+    "sub_fail": "⚠️ Подписка не найдена. Подпишитесь и нажмите ещё раз.",
 }
 
 EN = {
@@ -720,9 +746,9 @@ EN = {
         "Safe P2P deals in TON and USDT: accounts, NFT gifts, goods.\n\n"
         "• Deposit TON or USDT via the TON network — credited automatically by memo\n"
         "• When a deal starts the amount is frozen and cannot be withdrawn\n"
-        "• The buyer confirms receipt — the seller is credited minus the fee, the fee goes to the service balance\n"
+        "• The buyer confirms receipt — the seller is credited the full price, the buyer pays the fee on top and it goes to the service balance\n"
         "• Either side can open a dispute; an admin decides\n\n"
-        "💸 Fee: <b>{commission}%</b> from the seller, credited to the service\n"
+        "💸 Fee: <b>{commission}%</b> from the buyer, credited to the service\n"
         "💬 Support: @{support}\n"
         "{chat}"
     ),
@@ -769,7 +795,7 @@ EN = {
         "🛒 Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Seller: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Amount: <b>{amount}</b>\n"
-        "💸 Fee {fee}% · seller gets <b>{seller_get}</b>\n"
+        "💸 Fee {fee}% on the buyer · pays <b>{buyer_pay}</b>\n"
         "🔑 Credentials: {secret}\n"
         "📝 Terms: {desc}\n"
         "📌 Status: <b>{status}</b>"
@@ -781,7 +807,7 @@ EN = {
         "🛒 Buyer: @{buyer} (<code>{buyer_id}</code>)\n"
         "💼 Seller: @{seller} (<code>{seller_id}</code>)\n"
         "💰 Price: <b>{amount}</b>\n"
-        "💸 Fee {fee}% · seller gets <b>{seller_get}</b>\n"
+        "💸 Fee {fee}% on the buyer · pays <b>{buyer_pay}</b>\n"
         "🎁 NFT: {nft}\n"
         "🔑 Credentials: {secret}\n"
         "📝 Terms: {desc}\n"
@@ -883,7 +909,7 @@ EN = {
     "deal_nft_retry_ok": "NFT for deal #{id} was sent: {title}.",
     "deal_confirm_ask": "Confirm that you received a valid item?",
     "deal_done_buyer": "Deal closed. You can leave a review for the seller.",
-    "deal_done_seller": "Deal closed. Credited {amount} {currency} (fee {commission}%).",
+    "deal_done_seller": "Deal closed. Credited {amount} {currency}.",
     "deal_fee_service": "💼 Deal #{id} fee: +{amount} {currency} credited to the service.",
     "deal_review_ask": "Write a review or tap Skip.",
     "deal_review_skip": "Skip",
@@ -1041,7 +1067,7 @@ EN = {
     "deal_feed_title": "🛒 <b>Listings</b>",
     "deal_feed_line": "#{id} · {cat} · {amount}\n{title}\nselling · @{seller}",
     "deal_feed_line_buy": "#{id} · {cat} · {amount}\n{title}\nbuying · @{buyer}",
-    "deal_need_deposit": "Top up your balance in the profile first, then open the deal.",
+    "deal_need_deposit": "Top up your balance in the profile first (price + fee), then open the deal.",
     "deal_need_price": "The listing must have a price greater than zero.",
     "nft_need_gift": "Send the NFT to the bank and attach it first. You cannot open a deal without that gift in inventory.",
     "channel_listing": (
@@ -1205,10 +1231,30 @@ EN = {
     "withdraw_pick": "⬆️ <b>Which asset to withdraw?</b>\n\nPayout is to a TON address only. Frozen deal funds cannot be withdrawn.",
     "withdraw_frozen": "⚠️ Available {have} {currency}, another {frozen} is frozen in a deal. Frozen coins cannot be withdrawn.",
     "admin_wallets": "Wallets",
+    "admin_settings": "Settings",
     "admin_sessions": "Sessions",
     "admin_admins": "Admins",
     "admin_adm_add": "Add admin",
+    "admin_cfg_support_username": "Support username",
+    "admin_cfg_support_chat": "Support chat",
+    "admin_cfg_required_channel": "Required subscribe channel",
+    "admin_cfg_deals_channel": "Listings channel",
+    "admin_cfg_commission_percent": "Deal fee, %",
     "admin_cfg_service_id": "Service account ID (deal fees)",
+    "admin_cfg_currency": "Default currency",
+    "admin_cfg_min_deposit": "Min USDT deposit",
+    "admin_cfg_min_withdraw": "Min USDT withdraw",
+    "admin_cfg_min_deposit_ton": "Min TON deposit",
+    "admin_cfg_min_withdraw_ton": "Min TON withdraw",
+    "admin_cfg_min_ton_deal": "Min TON deal",
+    "admin_cfg_min_rub_deal": "Min RUB deal",
+    "admin_cfg_ton_rate": "TON rate",
+    "admin_cfg_ton_network": "TON network",
+    "admin_cfg_ton_gas": "TON gas",
+    "admin_cfg_bank_transfer_stars": "Stars per NFT transfer",
+    "admin_cfg_bank_min_stars": "Min Stars reserve",
+    "admin_cfg_fragment_stars": "Fragment Stars pack",
+    "admin_cfg_fragment_provider": "Fragment provider",
     "admin_cfg_ton_address": "TON escrow address",
     "admin_cfg_ton_mnemonic": "TON mnemonic",
     "admin_cfg_ton_api_key": "TON API key",
@@ -1226,6 +1272,7 @@ EN = {
     "admin_cfg_reconnect": "Reconnected: {svc}",
     "admin_cfg_reconnect_fail": "⚠️ Saved, but {svc} did not reconnect. Check the value.",
     "admin_cfg_wallets_text": "💎 <b>Wallets</b>\n\n{lines}\n\nTap a field to replace its value.",
+    "admin_cfg_bot_text": "⚙️ <b>Bot settings</b>\n\n{lines}\n\nTap a field to replace its value.",
     "admin_cfg_sessions_text": "🔐 <b>Sessions</b>\n\n{lines}\n\nTap a field to replace its value.",
     "admin_cfg_admins_text": "👑 <b>Admins</b>\n\n{lines}\n\nAdd an ID or @username. You cannot remove the last admin.",
     "admin_adm_ask": "Send the Telegram ID or @username of the new admin.",
@@ -1235,6 +1282,11 @@ EN = {
     "admin_adm_self": "⚠️ You cannot remove yourself.",
     "admin_adm_exists": "⚠️ This user is already an admin.",
     "admin_cfg_value": "{title}\n<code>{value}</code>",
+    "sub_need": "📢 <b>Subscribe to the channel</b>\n\nThe bot is locked until you join. Open the channel, then tap Check.",
+    "sub_open": "Open channel",
+    "sub_check": "Check",
+    "sub_ok": "✅ Subscription found",
+    "sub_fail": "⚠️ Subscription not found. Join the channel and try again.",
 }
 
 LOCALES = {"ru": RU, "en": EN}

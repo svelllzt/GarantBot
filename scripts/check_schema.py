@@ -6,7 +6,7 @@ from pathlib import Path
 from app.i18n import EN, RU
 from app.services.ton import ton_to_currency
 from app.storage import DEAL_CANCELLED, DEAL_CLOSED, DEAL_LISTED, DEAL_OPEN, DEAL_PENDING, NFT_AVAILABLE, NFT_LOCKED, NFT_TRANSFERRED, WALLET_DONE, WALLET_SENDING, Storage
-from app.util import seller_payout, service_fee, listing_is_buy
+from app.util import seller_payout, service_fee, buyer_total, listing_is_buy
 
 
 async def main() -> None:
@@ -231,17 +231,18 @@ async def main() -> None:
         assert taken["status"] == DEAL_OPEN
         assert taken["buyer_id"] == 2
         buyer_row = await db.get_user(2)
-        assert abs(db.available(buyer_row, "USDT") - 5) < 1e-9
-        assert abs(db.frozen_of(buyer_row, "USDT") - 15) < 1e-9
+        hold15 = buyer_total(15, 2, "USDT")
+        assert abs(db.available(buyer_row, "USDT") - (20 - hold15)) < 1e-9
+        assert abs(db.frozen_of(buyer_row, "USDT") - hold15) < 1e-9
         try:
             await db.spend_available(2, "USDT", 6)
             raise AssertionError("frozen funds must not be spendable")
         except ValueError:
             pass
-        await db.spend_available(2, "USDT", 5)
+        await db.spend_available(2, "USDT", db.available(await db.get_user(2), "USDT"))
         buyer_row = await db.get_user(2)
         assert abs(db.available(buyer_row, "USDT")) < 1e-9
-        assert abs(db.frozen_of(buyer_row, "USDT") - 15) < 1e-9
+        assert abs(db.frozen_of(buyer_row, "USDT") - hold15) < 1e-9
         settings = Settings(dict(DEFAULTS), Path("config.ini"))
         try:
             await dsvc.complete(db, settings, listed_nft, 2)
@@ -288,16 +289,16 @@ async def main() -> None:
         assert taken_buy["buyer_id"] == 12
         assert taken_buy["nft_id"] == nft_buy
         buyer12 = await db.get_user(12)
-        assert abs(db.frozen_of(buyer12, "USDT") - 20) < 1e-9
+        assert abs(db.frozen_of(buyer12, "USDT") - buyer_total(20, 2, "USDT")) < 1e-9
         await db.touch_deal(buy_lid, status=DEAL_CLOSED)
-        await db.unfreeze_asset(12, "USDT", 20)
+        await db.unfreeze_asset(12, "USDT", buyer_total(20, 2, "USDT"))
         await db.set_nft_status(nft_buy, NFT_AVAILABLE, deal_id=None)
 
         goods_buy = await dsvc.create_listing(db, 12, "goods", "Want item", 8, "need it", as_buyer=True)
         await dsvc.take_listing(db, goods_buy, 11)
         opened_buy = await db.get_deal(goods_buy)
         assert opened_buy["seller_id"] == 11 and opened_buy["buyer_id"] == 12
-        assert abs(db.frozen_of(await db.get_user(12), "USDT") - 8) < 1e-9
+        assert abs(db.frozen_of(await db.get_user(12), "USDT") - buyer_total(8, 2, "USDT")) < 1e-9
         from app.keyboards import DealCB as DealCBChat, deal_kb as deal_kb_early
         buy_kb = deal_kb_early("ru", theme, opened_buy, 12, await db.get_user(11))
         buy_cbs = [btn.callback_data or "" for row in buy_kb.inline_keyboard for btn in row]
@@ -318,7 +319,7 @@ async def main() -> None:
         await dsvc.accept(db, offer_buy, 11)
         opened_off = await db.get_deal(offer_buy)
         assert opened_off["status"] == DEAL_OPEN
-        assert abs(db.frozen_of(await db.get_user(12), "USDT") - 4) < 1e-9
+        assert abs(db.frozen_of(await db.get_user(12), "USDT") - buyer_total(4, 2, "USDT")) < 1e-9
         await db.add_dispute_msg(offer_buy, 12, "hello seller", is_admin=False)
         await db.add_dispute_msg(offer_buy, 1, "admin to seller", is_admin=True, target_id=11)
         await db.add_dispute_msg(offer_buy, 1, "admin to buyer", is_admin=True, target_id=12)
@@ -343,8 +344,8 @@ async def main() -> None:
         assert opened_acc["status"] == DEAL_OPEN
         assert opened_acc["buyer_id"] == 2
         buyer_row = await db.get_user(2)
-        assert abs(db.available(buyer_row, "TON") - 2) < 1e-9
-        assert abs(db.frozen_of(buyer_row, "TON") - 8) < 1e-9
+        assert abs(db.available(buyer_row, "TON") - (10 - buyer_total(8, 2, "TON"))) < 1e-9
+        assert abs(db.frozen_of(buyer_row, "TON") - buyer_total(8, 2, "TON")) < 1e-9
         from app.keyboards import deal_kb
         from app.catalog import needs_nft
         assert not needs_nft("acc_rbx")
@@ -379,7 +380,7 @@ async def main() -> None:
         await db.upsert_user(21, "sel21", "Прод21")
         await db.upsert_user(22, "buy22", "Пок22")
         await db.upsert_user(90, "cashier", "Касса")
-        await db.credit_asset(22, "USDT", 10)
+        await db.credit_asset(22, "USDT", 11)
         fee_lid = await dsvc.create_listing(db, 21, "goods", "Fee item", 10, "x", currency="USDT")
         await dsvc.take_listing(db, fee_lid, 22)
         fee_vals = dict(DEFAULTS)
@@ -391,8 +392,8 @@ async def main() -> None:
         seller21 = await db.get_user(21)
         buyer22 = await db.get_user(22)
         svc90 = await db.get_user(90)
-        assert abs(db.available(seller21, "USDT") - seller_payout(10, 2, "USDT")) < 1e-9
-        assert abs(db.available(buyer22, "USDT")) < 1e-9
+        assert abs(db.available(seller21, "USDT") - 10) < 1e-9
+        assert abs(db.available(buyer22, "USDT") - (11 - buyer_total(10, 2, "USDT"))) < 1e-9
         assert abs(db.frozen_of(buyer22, "USDT")) < 1e-9
         assert svc90 is not None
         assert svc90["nick"] == "Касса"
@@ -450,9 +451,9 @@ async def main() -> None:
         party_text = await render_deal(db, opened_e, "ru", "USDT", viewer_id=2)
         assert "login:pass" in party_text
         assert "Комиссия" in party_text
-        assert "продавцу" in party_text
+        assert "покупателя" in party_text
         await db.touch_deal(offer_e, status=DEAL_CANCELLED)
-        await db.unfreeze_asset(2, "USDT", 2)
+        await db.unfreeze_asset(2, "USDT", buyer_total(2, 2, "USDT"))
         await db.set_nft_status(nft_e, NFT_AVAILABLE, deal_id=None)
 
         await db.upsert_user(7, "s7", "S7")
@@ -460,7 +461,7 @@ async def main() -> None:
         await db.credit_asset(8, "USDT", 20)
         mut_id = await dsvc.create_listing(db, 7, "goods", "Item", 10, "desc", currency="USDT", secret="hidden")
         await dsvc.take_listing(db, mut_id, 8)
-        assert abs(db.frozen_of(await db.get_user(8), "USDT") - 10) < 1e-9
+        assert abs(db.frozen_of(await db.get_user(8), "USDT") - buyer_total(10, 2, "USDT")) < 1e-9
         try:
             await dsvc.confirm_cancel(db, mut_id, 8)
             raise AssertionError("buyer must not cancel alone")
@@ -506,10 +507,12 @@ async def main() -> None:
         sample = "UQ" + ("A" * 46)
         assert valid_ton(sample)
         assert clean_ton("https://tonviewer.com/" + sample + "?utm=1") == sample
-        assert abs(seller_payout(100, 2, "USDT") - 98) < 1e-9
-        assert abs(seller_payout(10, 2, "TON") - 9.8) < 1e-9
+        assert abs(seller_payout(100, 2, "USDT") - 100) < 1e-9
+        assert abs(seller_payout(10, 2, "TON") - 10) < 1e-9
         assert abs(service_fee(100, 2, "USDT") - 2) < 1e-9
         assert abs(service_fee(10, 2, "TON") - 0.2) < 1e-9
+        assert abs(buyer_total(100, 2, "USDT") - 102) < 1e-9
+        assert abs(buyer_total(10, 2, "TON") - 10.2) < 1e-9
         uid_vals = dict(DEFAULTS)
         uid_vals["admin_ids"] = "5,3"
         uid_vals["service_id"] = 0
@@ -554,6 +557,27 @@ async def main() -> None:
             assert 42 in cfg.admins
             cfg.patch("ton_address", "EQDtestaddress")
             assert cfg.ton_address == "EQDtestaddress"
+            cfg.patch("support_username", "@helpdesk")
+            assert cfg.support_username == "helpdesk"
+            cfg.patch("required_channel", "@otc_news")
+            assert cfg.required_channel == "@otc_news"
+            cfg.patch("deals_channel", "@otc_feed")
+            assert cfg.deals_channel == "@otc_feed"
+            cfg.patch("commission_percent", "3")
+            assert abs(float(cfg.commission_percent) - 3) < 1e-9
+            from app.services.channel import chat_id as ch_id, is_subscribed, public_url as ch_url
+            assert ch_id(cfg, "required_channel") == "@otc_news"
+            assert ch_url(cfg, "required_channel") == "https://t.me/otc_news"
+            cfg.patch("required_channel", "")
+            assert await is_subscribed(None, cfg, 99)
+            from app.keyboards import AdminCB, admin_kb
+            adm_kb = admin_kb("ru", theme)
+            adm_cbs = [btn.callback_data or "" for row in adm_kb.inline_keyboard for btn in row]
+            assert AdminCB(a="set").pack() in adm_cbs
+            from app.handlers.admin import BOT_FIELDS
+            assert "support_username" in BOT_FIELDS and "required_channel" in BOT_FIELDS
+            for key in BOT_FIELDS:
+                assert f"admin_cfg_{key}" in RU and f"admin_cfg_{key}" in EN
             cfg.patch("bank_session", "sess-value")
             assert cfg.bank_session == "sess-value"
             from app.config import clean_session_string, session_string_ok

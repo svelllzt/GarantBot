@@ -24,6 +24,7 @@ FIELDS: dict[tuple[str, str], str] = {
     ("bot", "min_deposit"): "min_deposit",
     ("bot", "min_withdraw"): "min_withdraw",
     ("bot", "deals_channel"): "deals_channel",
+    ("bot", "required_channel"): "required_channel",
     ("bot", "assets"): "assets_dir",
     ("bank", "api_id"): "bank_api_id",
     ("bank", "api_hash"): "bank_api_hash",
@@ -64,6 +65,7 @@ DEFAULTS: dict[str, Any] = {
     "min_deposit": 5.0,
     "min_withdraw": 10.0,
     "deals_channel": "",
+    "required_channel": "",
     "assets_dir": "assets",
     "bank_api_id": 0,
     "bank_api_hash": "",
@@ -100,6 +102,7 @@ ENV_TO_ATTR = {
     "SERVICE_ID": "service_id",
     "CURRENCY": "currency",
     "DEALS_CHANNEL": "deals_channel",
+    "REQUIRED_CHANNEL": "required_channel",
     "ASSETS": "assets_dir",
     "MIN_DEPOSIT": "min_deposit",
     "MIN_WITHDRAW": "min_withdraw",
@@ -152,6 +155,8 @@ def _cast(attr: str, value: str) -> Any:
             return 0.0
         return float(text.replace(",", "."))
     if attr == "bank_username":
+        return text.lstrip("@")
+    if attr == "support_username":
         return text.lstrip("@")
     if attr == "bank_session":
         return clean_session_string(text)
@@ -351,6 +356,7 @@ class Settings:
     min_deposit: float
     min_withdraw: float
     deals_channel: str
+    required_channel: str
     assets_dir: str
     bank_api_id: int
     bank_api_hash: str
@@ -410,6 +416,10 @@ class Settings:
         text = "" if value is None else str(value).strip()
         if attr == "bank_username":
             text = text.lstrip("@")
+        if attr == "support_username":
+            text = text.lstrip("@")
+        if attr in {"deals_channel", "required_channel"}:
+            text = text.strip()
         if attr == "bank_session":
             text = clean_session_string(text)
         setattr(self, attr, _cast(attr, text))

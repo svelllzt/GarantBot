@@ -88,19 +88,24 @@ def deal_status_key(status: str) -> str:
     return f"deal_status_{status}"
 
 
-def seller_payout(amount: float, commission: float, asset: str = "USDT") -> float:
-    raw = float(amount) * (100 - commission) / 100
+def _qty(amount: float, asset: str = "USDT") -> float:
+    raw = float(amount)
     if (asset or "").upper() == "TON":
         return round(raw, 9)
     return round(raw, 6)
+
+
+def seller_payout(amount: float, commission: float = 0, asset: str = "USDT") -> float:
+    return _qty(amount, asset)
 
 
 def service_fee(amount: float, commission: float, asset: str = "USDT") -> float:
-    payout = seller_payout(amount, commission, asset)
-    raw = max(float(amount) - payout, 0)
-    if (asset or "").upper() == "TON":
-        return round(raw, 9)
-    return round(raw, 6)
+    raw = max(float(amount) * float(commission or 0) / 100, 0)
+    return _qty(raw, asset)
+
+
+def buyer_total(amount: float, commission: float, asset: str = "USDT") -> float:
+    return _qty(seller_payout(amount, commission, asset) + service_fee(amount, commission, asset), asset)
 
 
 def money_ton(value) -> str:
@@ -280,7 +285,7 @@ async def render_deal(db, deal, lang: str, currency: str, escrow: str = "", view
         fee = float(get_settings().commission_percent)
     except Exception:
         fee = 2.0
-    seller_get = f"{money_asset(seller_payout(raw_amount, fee, asset), asset)} {asset}" if raw_amount else "—"
+    buyer_pay = f"{money_asset(buyer_total(raw_amount, fee, asset), asset)} {asset}" if raw_amount else "—"
     return t(
         lang,
         key,
@@ -293,7 +298,7 @@ async def render_deal(db, deal, lang: str, currency: str, escrow: str = "", view
         seller_id=deal["seller_id"] or "—",
         amount=amount,
         fee=f"{fee:g}",
-        seller_get=seller_get,
+        buyer_pay=buyer_pay,
         nft=nft_title(nft) if nft else t(lang, "deal_nft_none"),
         secret=secret,
         desc=h(deal["description"]) if deal["description"] else "—",

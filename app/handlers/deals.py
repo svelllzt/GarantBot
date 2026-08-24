@@ -138,6 +138,7 @@ async def _publish_listing(bot, user_id: int, state: FSMContext, db: Storage, la
             nft_id=int(data.get("nft_id") or 0),
             currency=data.get("currency") or "USDT",
             secret="" if data.get("as_buyer") else data.get("secret") or "",
+            settings=settings,
         )
     except DealError as exc:
         await bot.send_message(user_id, svc.err_text(lang, exc))
@@ -517,7 +518,7 @@ async def take_deal(call: CallbackQuery, callback_data: DealCB, db: Storage, lan
         )
         return
     try:
-        await svc.take_listing(db, callback_data.i, call.from_user.id)
+        await svc.take_listing(db, callback_data.i, call.from_user.id, settings=settings)
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
@@ -528,7 +529,7 @@ async def take_deal(call: CallbackQuery, callback_data: DealCB, db: Storage, lan
 @router.callback_query(DealCB.filter(F.a == "nfttake"))
 async def take_with_nft(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, settings: Settings, theme: Theme, ton, bank):
     try:
-        await svc.take_listing(db, callback_data.i, call.from_user.id, nft_id=callback_data.x)
+        await svc.take_listing(db, callback_data.i, call.from_user.id, nft_id=callback_data.x, settings=settings)
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
@@ -587,6 +588,7 @@ async def send_offer(call: CallbackQuery, state: FSMContext, db: Storage, lang: 
             description=data.get("description") or "",
             currency=data.get("currency") or "USDT",
             secret="" if data.get("as_buyer") else data.get("secret") or "",
+            settings=settings,
         )
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
@@ -632,7 +634,7 @@ async def accept_offer(call: CallbackQuery, callback_data: DealCB, db: Storage, 
         await call.answer(t(lang, "error"), show_alert=True)
         return
     try:
-        await svc.accept(db, callback_data.i, call.from_user.id)
+        await svc.accept(db, callback_data.i, call.from_user.id, settings=settings)
     except DealError as exc:
         if exc.key == "deal_nft_need_item":
             items = await db.nfts_of(call.from_user.id, NFT_AVAILABLE)
@@ -695,7 +697,7 @@ async def accept_with_nft(call: CallbackQuery, callback_data: DealCB, db: Storag
     await call.answer(t(lang, "deal_nft_set", title=title), show_alert=True)
     if deal and deal["status"] == DEAL_PENDING:
         try:
-            await svc.accept(db, callback_data.i, call.from_user.id)
+            await svc.accept(db, callback_data.i, call.from_user.id, settings=settings)
         except DealError as exc:
             await call.answer(svc.err_text(lang, exc), show_alert=True)
             if deal:
@@ -899,7 +901,6 @@ async def confirm_go(
                 "deal_done_seller",
                 amount=money_asset(payout, deal_asset(deal)),
                 currency=deal_asset(deal),
-                commission=settings.commission_percent,
             ),
             reply_markup=await home_kb(db, deal["seller_id"], seller_lang, theme),
         )
@@ -966,7 +967,7 @@ async def cancel_ask(call: CallbackQuery, callback_data: DealCB, db: Storage, la
             await call.answer(t(lang, "error"), show_alert=True)
             return
         try:
-            await svc.cancel_mutual(db, deal["id"])
+            await svc.cancel_mutual(db, deal["id"], settings=settings)
         except DealError as exc:
             await call.answer(svc.err_text(lang, exc), show_alert=True)
             return
@@ -1006,7 +1007,7 @@ async def cancel_ask(call: CallbackQuery, callback_data: DealCB, db: Storage, la
 
 
 @router.callback_query(DealCB.filter(F.a == "cansend"))
-async def cancel_send(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, theme: Theme):
+async def cancel_send(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, theme: Theme, settings: Settings):
     if callback_data.x != 1:
         await call.answer()
         return
@@ -1015,7 +1016,7 @@ async def cancel_send(call: CallbackQuery, callback_data: DealCB, db: Storage, l
         await call.answer(t(lang, "error"), show_alert=True)
         return
     try:
-        result = await svc.request_cancel(db, callback_data.i, call.from_user.id)
+        result = await svc.request_cancel(db, callback_data.i, call.from_user.id, settings=settings)
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return
@@ -1051,13 +1052,13 @@ async def cancel_send(call: CallbackQuery, callback_data: DealCB, db: Storage, l
 
 
 @router.callback_query(DealCB.filter(F.a == "canok"))
-async def cancel_ok(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, theme: Theme, ton):
+async def cancel_ok(call: CallbackQuery, callback_data: DealCB, db: Storage, lang: str, theme: Theme, ton, settings: Settings):
     deal = await db.get_deal(callback_data.i)
     if deal is None or call.from_user.id not in (deal["seller_id"], deal["buyer_id"]):
         await call.answer(t(lang, "error"), show_alert=True)
         return
     try:
-        await svc.confirm_cancel(db, callback_data.i, call.from_user.id)
+        await svc.confirm_cancel(db, callback_data.i, call.from_user.id, settings=settings)
     except DealError as exc:
         await call.answer(svc.err_text(lang, exc), show_alert=True)
         return

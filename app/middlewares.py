@@ -8,6 +8,7 @@ from app.config import Settings
 from app.storage import Storage
 from app.util import ban_notice
 from app import ctx
+from app.services import channel as ch
 
 
 def support_link(settings: Settings) -> str:
@@ -40,6 +41,36 @@ def _inner(event: TelegramObject):
     if isinstance(event, Update):
         return event.event
     return event
+
+
+def _sub_exempt(event: TelegramObject, user, settings: Settings, row) -> bool:
+    if user is None:
+        return True
+    if settings.is_admin(user.id):
+        return True
+    if not (settings.required_channel or "").strip():
+        return True
+    inner = _inner(event)
+    data = ""
+    if isinstance(inner, CallbackQuery):
+        data = inner.data or ""
+        if data.startswith("lang:"):
+            return True
+        if data.startswith("nav:subchk") or ":subchk" in data:
+            return True
+    if row is None or not (row["lang"] or ""):
+        if isinstance(inner, CallbackQuery) and data.startswith("lang:"):
+            return True
+        if isinstance(inner, Message):
+            text = (inner.text or "").strip()
+            if text.startswith("/start"):
+                return True
+        return True
+    if isinstance(inner, Message):
+        text = (inner.text or "").strip()
+        if text.startswith("/start"):
+            return True
+    return False
 
 
 class ContextMiddleware(BaseMiddleware):
@@ -82,6 +113,12 @@ class ContextMiddleware(BaseMiddleware):
             text = ban_notice(data["lang"], row["ban_reason"] if "ban_reason" in row.keys() else "", self.settings.support_username)
             await _send_ban(event, text)
             return None
+
+        if not _sub_exempt(event, user, self.settings, row):
+            bot = data.get("bot") or getattr(event, "bot", None)
+            if bot is None or not await ch.is_subscribed(bot, self.settings, user.id):
+                await ch.send_sub_gate(event, data["lang"], self.settings, bot=bot)
+                return None
 
         return await handler(event, data)
 
