@@ -50,7 +50,6 @@ from app.util import (
     parse_ton,
     paint,
     render_deal,
-    service_fee,
     username_of,
     h,
 )
@@ -82,9 +81,8 @@ async def _show_deal(bot, db: Storage, deal, user_id: int, lang: str, settings: 
 
 
 async def notify_service_fee(bot, db: Storage, settings: Settings, deal) -> None:
-    amount = float(deal["amount"] or 0)
     asset = deal_asset(deal)
-    fee = service_fee(amount, settings.commission_percent, asset)
+    fee = svc.deal_fee(deal, settings)
     sid = settings.service_uid()
     if fee <= 0 or not sid:
         return

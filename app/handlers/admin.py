@@ -688,10 +688,6 @@ async def wd_ok(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: 
             pass
         tx = await ton.payout(dest, amount, asset, comment=f"W{item['id']}")
         if not tx:
-            try:
-                await db.finish_withdraw(item["id"], WALLET_PENDING)
-            except Exception:
-                pass
             await paint(call, t(lang, "admin_wd_fail", id=item["id"]), settings=settings)
             return
         await db.finish_withdraw(item["id"], WALLET_DONE, tx)
@@ -733,7 +729,7 @@ async def wd_no(call: CallbackQuery, callback_data: AdminCB, db: Storage, lang: 
     wid = int(callback_data.i)
     async with _wd_lock(wid):
         item = await db.get_withdraw(wid)
-        if item is None or item["status"] not in {WALLET_PENDING, WALLET_SENDING}:
+        if item is None or item["status"] != WALLET_PENDING:
             await call.answer(t(lang, "error"), show_alert=True)
             return
         if not await db.claim_withdraw(item["id"], WALLET_REJECTED, from_status=item["status"]):

@@ -17,7 +17,7 @@ from app.storage import (
     NFT_TRANSFERRED,
     Storage,
 )
-from app.util import buyer_total, deal_asset, deal_creator, is_nft_deal, listing_is_buy, listing_owner, nft_title, seller_payout, service_fee
+from app.util import buyer_total, deal_asset, deal_creator, is_nft_deal, listing_is_buy, listing_owner, nft_title, seller_payout
 
 
 class DealError(Exception):
@@ -49,6 +49,28 @@ def _hold_qty(deal, settings: Settings | None = None) -> float:
     return buyer_total(amount, _commission(settings), deal_asset(deal))
 
 
+def _stored_hold(deal) -> float:
+    try:
+        qty = float(deal["hold_qty"] or 0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        qty = 0.0
+    return qty if qty > 0 else 0.0
+
+
+def _deal_hold(deal, settings: Settings | None = None) -> float:
+    stored = _stored_hold(deal)
+    if stored > 0:
+        return stored
+    return _hold_qty(deal, settings)
+
+
+def deal_fee(deal, settings: Settings | None = None) -> float:
+    asset = deal_asset(deal)
+    payout = seller_payout(float(deal["amount"] or 0), 0, asset)
+    hold = _deal_hold(deal, settings)
+    return seller_payout(max(hold - payout, 0), 0, asset)
+
+
 async def _need_buyer_funds(db: Storage, buyer_id: int, deal, settings: Settings | None = None) -> None:
     amount = float(deal["amount"] or 0)
     if amount <= 0:
@@ -69,6 +91,12 @@ async def _freeze_buyer(db: Storage, deal, settings: Settings | None = None) -> 
         await db.freeze_asset(deal["buyer_id"], asset, hold)
     except ValueError:
         raise DealError("deal_need_deposit")
+    try:
+        deal_id = int(deal["id"] or 0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        deal_id = 0
+    if deal_id:
+        await db.touch_deal(deal_id, hold_qty=hold)
 
 
 async def _unfreeze_buyer(db: Storage, deal, settings: Settings | None = None) -> None:
@@ -76,11 +104,13 @@ async def _unfreeze_buyer(db: Storage, deal, settings: Settings | None = None) -
     if amount <= 0 or not deal["buyer_id"]:
         return
     asset = deal_asset(deal)
-    hold = _hold_qty(deal, settings)
+    hold = _deal_hold(deal, settings)
     try:
         await db.unfreeze_asset(deal["buyer_id"], asset, hold)
+        return
     except ValueError:
-        await db.unfreeze_asset(deal["buyer_id"], asset, amount)
+        pass
+    await db.unfreeze_asset(deal["buyer_id"], asset, amount)
 
 
 async def _release_nft(db: Storage, deal) -> None:
@@ -102,20 +132,24 @@ async def _pay_service(db: Storage, settings: Settings, asset: str, fee: float) 
 async def _capture_and_pay(db: Storage, settings: Settings, deal) -> float:
     amount = float(deal["amount"] or 0)
     asset = deal_asset(deal)
-    payout = seller_payout(amount, settings.commission_percent, asset)
-    fee = service_fee(amount, settings.commission_percent, asset)
-    hold = buyer_total(amount, settings.commission_percent, asset)
+    payout = seller_payout(amount, 0, asset)
+    hold = _deal_hold(deal, settings)
+    fee = seller_payout(max(hold - payout, 0), 0, asset)
     captured = hold
     try:
         await db.capture_asset(deal["buyer_id"], asset, hold)
     except ValueError:
         await db.capture_asset(deal["buyer_id"], asset, amount)
         captured = amount
+        fee = seller_payout(max(captured - payout, 0), 0, asset)
     try:
         await db.credit_asset(deal["seller_id"], asset, payout)
         try:
-            if captured + 1e-12 >= hold:
-                await _pay_service(db, settings, asset, fee)
+            if fee > 0:
+                if settings.service_uid():
+                    await _pay_service(db, settings, asset, fee)
+                else:
+                    await db.credit_asset(deal["buyer_id"], asset, fee)
         except Exception:
             pass
     except Exception:
@@ -302,9 +336,15 @@ async def take_listing(db: Storage, deal_id: int, taker_id: int, nft_id: int = 0
         try:
             if nft:
                 await attach_nft(db, deal_id, taker_id, nft_id)
+                deal = await db.get_deal(deal_id)
             await _freeze_buyer(db, deal, settings)
         except DealError:
-            await _release_nft(db, deal)
+            fresh = await db.get_deal(deal_id)
+            await _release_nft(db, fresh or deal)
+            if nft_id:
+                locked = await db.get_nft(nft_id)
+                if locked is not None and locked["status"] == NFT_LOCKED and int(locked["deal_id"] or 0) == int(deal_id):
+                    await db.set_nft_status(nft_id, NFT_AVAILABLE, deal_id=None)
             await db.claim_deal(deal_id, DEAL_OPEN, status=DEAL_LISTED, seller_id=0, nft_id=None)
             raise
         return
@@ -558,8 +598,6 @@ async def _settle_nft(db: Storage, deal, to_buyer: bool) -> None:
             owner_id=deal["buyer_id"],
             deal_id=deal["id"],
         )
-        return
-    if to_buyer:
         return
     await db.set_nft_status(deal["nft_id"], NFT_AVAILABLE, deal_id=None)
 

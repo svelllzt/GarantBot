@@ -61,9 +61,13 @@ async def cmd_start(
     if theme is None:
         theme = Theme(await db.button_map())
     payload = (command.args or "").strip()
+    prev = await state.get_data()
+    kept = prev.get("start_payload")
     await state.clear()
     if payload:
         await state.update_data(start_payload=payload)
+    elif kept:
+        await state.update_data(start_payload=kept)
     wipe = await message.answer("\u2060", reply_markup=ReplyKeyboardRemove())
     try:
         await wipe.delete()

@@ -10,7 +10,7 @@ from app.pyro import Client, RawUpdateHandler, functions, types
 
 from app.config import Settings, clean_session_string, session_string_ok
 from app.i18n import t
-from app.storage import DEAL_CLOSED, DEAL_DISPUTE, DEAL_OPEN, DEAL_REVIEW, NFT_TRANSFERRED, Storage
+from app.storage import DEAL_CLOSED, DEAL_DISPUTE, DEAL_OPEN, DEAL_REVIEW, NFT_LOCKED, NFT_TRANSFERRED, Storage
 from app.services.fragment import StarsBuyer
 from app.util import nft_title
 
@@ -451,12 +451,17 @@ class BankAccount:
         pending = await self.db.pending_nft_sends()
         for deal in pending:
             fresh = await self.db.get_deal(deal["id"])
-            if fresh is None or fresh["nft_sent"] or not fresh["nft_id"] or not fresh["buyer_id"]:
+            if fresh is None or not fresh["nft_id"] or not fresh["buyer_id"]:
                 continue
             if fresh["status"] not in {DEAL_OPEN, DEAL_DISPUTE, DEAL_REVIEW, DEAL_CLOSED}:
                 continue
             nft = await self.db.get_nft(fresh["nft_id"])
-            if not await self.db.claim_nft_sent(fresh["id"]):
+            claimed = False
+            if not fresh["nft_sent"]:
+                if not await self.db.claim_nft_sent(fresh["id"]):
+                    continue
+                claimed = True
+            elif nft is None or nft["status"] != NFT_LOCKED:
                 continue
             result = await self.transfer(nft, fresh["buyer_id"])
             if result == "ok":
@@ -469,7 +474,8 @@ class BankAccount:
                     )
                 await self._notify_nft_sent(fresh, nft)
             else:
-                await self.db.revert_nft_sent(fresh["id"])
+                if claimed or fresh["nft_sent"]:
+                    await self.db.revert_nft_sent(fresh["id"])
                 if result == "no_stars":
                     break
 

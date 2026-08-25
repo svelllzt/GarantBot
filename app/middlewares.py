@@ -65,7 +65,7 @@ def _sub_exempt(event: TelegramObject, user, settings: Settings, row) -> bool:
             text = (inner.text or "").strip()
             if text.startswith("/start"):
                 return True
-        return True
+        return False
     if isinstance(inner, Message):
         text = (inner.text or "").strip()
         if text.startswith("/start"):
@@ -115,12 +115,50 @@ class ContextMiddleware(BaseMiddleware):
             return None
 
         if not _sub_exempt(event, user, self.settings, row):
+            if row is None or not (row["lang"] or ""):
+                from app.keyboards import lang_kb
+                from app.i18n import t
+
+                await _send_markup(event, t("ru", "choose_lang"), lang_kb(data["theme"]))
+                return None
             bot = data.get("bot") or getattr(event, "bot", None)
-            if bot is None or not await ch.is_subscribed(bot, self.settings, user.id):
+            if bot is not None and not await ch.is_subscribed(bot, self.settings, user.id):
                 await ch.send_sub_gate(event, data["lang"], self.settings, bot=bot)
                 return None
 
         return await handler(event, data)
+
+
+async def _send_markup(event: TelegramObject, text: str, markup) -> None:
+    target = _inner(event)
+    if isinstance(target, CallbackQuery):
+        try:
+            await target.answer()
+        except Exception:
+            pass
+        msg = target.message
+        if msg is None:
+            return
+        try:
+            await msg.edit_text(text, reply_markup=markup)
+            return
+        except Exception:
+            pass
+        try:
+            await msg.edit_caption(caption=text, reply_markup=markup)
+            return
+        except Exception:
+            pass
+        try:
+            await msg.answer(text, reply_markup=markup)
+        except Exception:
+            pass
+        return
+    if isinstance(target, Message):
+        try:
+            await target.answer(text, reply_markup=markup)
+        except Exception:
+            pass
 
 
 async def _send_ban(event: TelegramObject, text: str) -> None:

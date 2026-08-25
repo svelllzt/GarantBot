@@ -83,8 +83,8 @@ def forget_sub(user_id: int | None = None) -> None:
 
 
 async def is_subscribed(bot, settings: Settings, user_id: int) -> bool:
-    chat = required_chat(settings)
-    if chat is None:
+    raw = (settings.required_channel or "").strip()
+    if not raw:
         return True
     uid = int(user_id or 0)
     if uid <= 0:
@@ -93,14 +93,21 @@ async def is_subscribed(bot, settings: Settings, user_id: int) -> bool:
         return True
     if sub_cached(uid):
         return True
+    chat = required_chat(settings)
+    if chat is None or bot is None:
+        return False
     try:
         member = await bot.get_chat_member(chat, uid)
         status = getattr(member, "status", None)
         status = getattr(status, "value", status)
         ok = str(status or "") not in {"left", "kicked"}
-    except Exception:
-        log.exception("subscribe check failed")
-        ok = False
+    except Exception as exc:
+        text = str(exc).lower()
+        if any(word in text for word in ("participant", "not a member", "user not found", "kicked", "left")):
+            ok = False
+        else:
+            log.exception("subscribe check failed")
+            ok = True
     if ok:
         remember_sub(uid)
     else:

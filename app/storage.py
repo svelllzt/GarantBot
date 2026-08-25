@@ -29,7 +29,6 @@ ACTIVE_DEALS = (
     DEAL_LISTED,
     DEAL_OPEN,
     DEAL_DISPUTE,
-    DEAL_REVIEW,
 )
 DEAL_FIELDS = {
     "status",
@@ -57,6 +56,7 @@ DEAL_FIELDS = {
     "secret",
     "cancel_by",
     "created_by",
+    "hold_qty",
 }
 WALLET_PENDING = "pending"
 WALLET_SENDING = "sending"
@@ -302,6 +302,7 @@ class Storage:
                 "secret": "TEXT",
                 "cancel_by": "INTEGER",
                 "created_by": "INTEGER NOT NULL DEFAULT 0",
+                "hold_qty": "REAL NOT NULL DEFAULT 0",
             },
         )
         await self._add_missing(
@@ -653,11 +654,18 @@ class Storage:
         return await self.fetchall(
             """
             SELECT * FROM deals
-            WHERE nft_id IS NOT NULL AND nft_sent = 0 AND buyer_id != 0
+            WHERE nft_id IS NOT NULL AND buyer_id != 0
               AND status IN (?, ?, ?, ?)
+              AND (
+                    nft_sent = 0
+                 OR EXISTS (
+                        SELECT 1 FROM inventory
+                        WHERE inventory.id = deals.nft_id AND inventory.status = ?
+                    )
+              )
             ORDER BY id
             """,
-            (DEAL_OPEN, DEAL_DISPUTE, DEAL_REVIEW, DEAL_CLOSED),
+            (DEAL_OPEN, DEAL_DISPUTE, DEAL_REVIEW, DEAL_CLOSED, NFT_LOCKED),
         )
 
     async def create_deal(

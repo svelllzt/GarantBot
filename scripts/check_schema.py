@@ -92,7 +92,7 @@ async def main() -> None:
         assert info["users"] >= 2
         assert "deals" in info
         deal_cols = await db._columns("deals")
-        for name in ("category", "title", "channel_msg_id", "kind", "dispute_reason", "dispute_by", "nft_sent", "currency", "secret", "cancel_by", "created_by"):
+        for name in ("category", "title", "channel_msg_id", "kind", "dispute_reason", "dispute_by", "nft_sent", "currency", "secret", "cancel_by", "created_by", "hold_qty"):
             assert name in deal_cols, name
         msg_cols = await db._columns("dispute_messages")
         assert "target_id" in msg_cols
@@ -401,6 +401,54 @@ async def main() -> None:
         assert abs(db.available(svc90, "USDT") - service_fee(10, 2, "USDT")) < 1e-9
         await db.touch_deal(fee_lid, status=DEAL_CLOSED)
 
+        await db.upsert_user(41, "s41", "S41")
+        await db.upsert_user(42, "b42", "B42")
+        await db.credit_asset(42, "USDT", 20)
+        hold_lid = await dsvc.create_listing(db, 41, "goods", "Hold", 10, "x", currency="USDT")
+        s2 = Settings(dict(DEFAULTS) | {"commission_percent": 2.0, "service_id": 90}, Path("config.ini"))
+        await dsvc.take_listing(db, hold_lid, 42, settings=s2)
+        frozen_hold = buyer_total(10, 2, "USDT")
+        assert abs(float((await db.get_deal(hold_lid))["hold_qty"]) - frozen_hold) < 1e-9
+        assert abs(db.frozen_of(await db.get_user(42), "USDT") - frozen_hold) < 1e-9
+        s5 = Settings(dict(DEFAULTS) | {"commission_percent": 5.0, "service_id": 90}, Path("config.ini"))
+        hold_payout = await dsvc.complete(db, s5, hold_lid, 42)
+        assert abs(hold_payout - 10) < 1e-9
+        assert abs(db.frozen_of(await db.get_user(42), "USDT")) < 1e-9
+        assert abs(db.available(await db.get_user(90), "USDT") - 0.4) < 1e-9
+        assert await db.active_deal(41) is None
+        await db.touch_deal(hold_lid, status=DEAL_CLOSED)
+
+        orig_freeze = dsvc._freeze_buyer
+
+        async def boom_freeze(*a, **k):
+            raise DealErr("deal_need_deposit")
+
+        dsvc._freeze_buyer = boom_freeze
+        try:
+            await db.upsert_user(51, "s51", "S51")
+            await db.upsert_user(52, "b52", "B52")
+            await db.credit_asset(52, "USDT", 20)
+            buy_fail = await dsvc.create_listing(db, 52, "nft", "Want", 5, "x", as_buyer=True)
+            nft_fail = await db.add_nft(51, gift_id="gfail", slug="gfail", title="Fail", num=1, msg_id=777, from_user_id=51, is_unique=True)
+            try:
+                await dsvc.take_listing(db, buy_fail, 51, nft_id=nft_fail)
+                raise AssertionError("freeze fail must bubble")
+            except DealErr as exc:
+                assert exc.key == "deal_need_deposit"
+            assert (await db.get_nft(nft_fail))["status"] == NFT_AVAILABLE
+            assert (await db.get_deal(buy_fail))["status"] == DEAL_LISTED
+        finally:
+            dsvc._freeze_buyer = orig_freeze
+
+        nft_win = await db.add_nft(1, gift_id="gwin", slug="gwin", title="Win", num=3, msg_id=778, from_user_id=1, is_unique=True)
+        await db.credit_asset(2, "USDT", 20)
+        win_lid = await dsvc.create_listing(db, 1, "nft", "WinNFT", 4, "x", nft_id=nft_win, currency="USDT")
+        await dsvc.take_listing(db, win_lid, 2)
+        await dsvc.open_dispute(db, win_lid, 2, "x")
+        await dsvc.verdict_seller(db, settings, win_lid)
+        assert (await db.get_nft(nft_win))["status"] == NFT_AVAILABLE
+        await db.touch_deal(win_lid, status=DEAL_CLOSED)
+
         nft_d = await db.add_nft(1, gift_id="g5", slug="giftd", title="D", num=5, msg_id=102, from_user_id=1, is_unique=True)
         offer = await dsvc.open_offer(db, 1, 2, category="nft", title="GiftD", nft_id=nft_d, amount=3, currency="USDT")
         assert (await db.get_nft(nft_d))["status"] == NFT_LOCKED
@@ -568,6 +616,9 @@ async def main() -> None:
             from app.services.channel import chat_id as ch_id, is_subscribed, public_url as ch_url
             assert ch_id(cfg, "required_channel") == "@otc_news"
             assert ch_url(cfg, "required_channel") == "https://t.me/otc_news"
+            cfg.patch("required_channel", "https://t.me/+abcdef")
+            assert ch_id(cfg, "required_channel") is None
+            assert await is_subscribed(None, cfg, 99) is False
             cfg.patch("required_channel", "")
             assert await is_subscribed(None, cfg, 99)
             from app.keyboards import AdminCB, admin_kb
